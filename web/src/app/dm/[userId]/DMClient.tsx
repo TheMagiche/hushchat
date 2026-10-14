@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useChatStore } from '@/state/store';
 import { MeshTransport } from '@/chat-core/transport';
@@ -17,8 +17,9 @@ import {
 
 export default function DMClient() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const targetUserId = (params?.userId as string) || 'welcome';
+  const targetUserId = (searchParams?.get('id') || searchParams?.get('userId') || (params?.userId as string) || 'welcome');
   const {
     identity,
     wasm,

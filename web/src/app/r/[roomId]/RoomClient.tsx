@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useChatStore } from '@/state/store';
 import { MeshTransport } from '@/chat-core/transport';
@@ -23,8 +23,9 @@ import { QRCodeSVG } from 'qrcode.react';
 
 export default function RoomClient() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const roomId = (params?.roomId as string) || 'general';
+  const roomId = (searchParams?.get('id') || searchParams?.get('room') || (params?.roomId as string) || 'general');
   const {
     identity,
     wasm,

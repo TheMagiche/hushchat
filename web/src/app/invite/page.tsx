@@ -33,7 +33,7 @@ export default function InvitePage() {
       status: 'offline',
     });
 
-    router.push(`/dm/${targetId.trim()}`);
+    router.push(`/dm?id=${encodeURIComponent(targetId.trim())}`);
   };
 
   const copyInviteLink = () => {

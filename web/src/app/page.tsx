@@ -13,9 +13,13 @@ import {
   Lock,
   Globe,
   ArrowRight,
-  QrCode,
   Copy,
   Check,
+  Download,
+  Laptop,
+  Monitor,
+  Terminal,
+  Smartphone,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -31,13 +35,13 @@ export default function HomePage() {
   const handleCreatePublicRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomName.trim()) return;
-    router.push(`/r/${encodeURIComponent(roomName.trim().toLowerCase().replace(/\s+/g, '-'))}`);
+    router.push(`/r?id=${encodeURIComponent(roomName.trim().toLowerCase().replace(/\s+/g, '-'))}`);
   };
 
   const handleCreatePrivateRoom = () => {
     const roomId = `room-${Math.random().toString(36).slice(2, 10)}`;
     const secret = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    router.push(`/r/${roomId}#k=${secret}`);
+    router.push(`/r?id=${roomId}#k=${secret}`);
   };
 
   const copyUserId = () => {
@@ -62,12 +66,22 @@ export default function HomePage() {
               <p className="text-[10px] text-muted-foreground">Serverless P2P Mesh</p>
             </div>
           </div>
-          <Link
-            href="/settings"
-            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link
+              href="/download"
+              className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+              title="Download Desktop & Mobile Apps"
+            >
+              <Download className="w-4 h-4" />
+            </Link>
+            <Link
+              href="/settings"
+              className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+              title="Settings & Privacy"
+            >
+              <SettingsIcon className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
 
         {/* Identity card */}
@@ -107,7 +121,7 @@ export default function HomePage() {
                 {conversations.map((conv) => (
                   <Link
                     key={conv.id}
-                    href={conv.id.startsWith('dm:') ? `/dm/${conv.id.replace('dm:', '')}` : `/r/${conv.id}`}
+                    href={conv.id.startsWith('dm:') ? `/dm?id=${conv.id.replace('dm:', '')}` : `/r?id=${conv.id}`}
                     className="flex items-center justify-between p-2 rounded-lg hover:bg-secondary/60 transition-colors"
                   >
                     <div className="min-w-0">
@@ -136,7 +150,7 @@ export default function HomePage() {
                 {contacts.map((c) => (
                   <Link
                     key={c.userId}
-                    href={`/dm/${c.userId}`}
+                    href={`/dm?id=${c.userId}`}
                     className="flex items-center justify-between p-2 rounded-lg hover:bg-secondary/60 transition-colors"
                   >
                     <p className="text-xs font-medium">{c.name}</p>
@@ -211,6 +225,27 @@ export default function HomePage() {
               >
                 <Plus className="w-3.5 h-3.5" /> Create Secret Room
               </button>
+            </div>
+          </div>
+
+          {/* Download Platforms Banner */}
+          <div className="bg-card/60 border border-border rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Download className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-semibold">Native Desktop & Mobile Apps</p>
+                <p className="text-[11px] text-muted-foreground">macOS, Windows, Linux, Android</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/download"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium border border-border transition-colors"
+              >
+                Download Apps <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
           </div>
 

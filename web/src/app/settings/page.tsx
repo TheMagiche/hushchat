@@ -14,6 +14,11 @@ import {
   Server,
   EyeOff,
   Check,
+  Laptop,
+  Monitor,
+  Terminal,
+  Smartphone,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -174,6 +179,72 @@ export default function SettingsPage() {
             >
               <Upload className="w-3.5 h-3.5" /> Import & Restore Backup
             </button>
+          </div>
+        </div>
+
+        {/* Desktop & Mobile Apps */}
+        <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Download className="w-4 h-4 text-primary" />
+              <h2 className="font-semibold text-sm">Download Native Apps</h2>
+            </div>
+            <Link
+              href="/download"
+              className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+            >
+              All Platforms <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Run PeerChat as a native desktop or mobile application with local hardware-backed storage and zero background telemetry.
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <a
+              href="https://github.com/TheMagiche/hushchat/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-border flex flex-col items-center text-center gap-1.5 transition-colors"
+            >
+              <Laptop className="w-4 h-4 text-primary" />
+              <span className="text-xs font-medium">macOS</span>
+              <span className="text-[10px] text-muted-foreground">.dmg</span>
+            </a>
+
+            <a
+              href="https://github.com/TheMagiche/hushchat/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-border flex flex-col items-center text-center gap-1.5 transition-colors"
+            >
+              <Monitor className="w-4 h-4 text-blue-400" />
+              <span className="text-xs font-medium">Windows</span>
+              <span className="text-[10px] text-muted-foreground">.msi / .exe</span>
+            </a>
+
+            <a
+              href="https://github.com/TheMagiche/hushchat/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-border flex flex-col items-center text-center gap-1.5 transition-colors"
+            >
+              <Terminal className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-medium">Linux</span>
+              <span className="text-[10px] text-muted-foreground">.AppImage / .deb</span>
+            </a>
+
+            <a
+              href="https://github.com/TheMagiche/hushchat/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-border flex flex-col items-center text-center gap-1.5 transition-colors"
+            >
+              <Smartphone className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-medium">Android</span>
+              <span className="text-[10px] text-muted-foreground">.apk</span>
+            </a>
           </div>
         </div>
 
