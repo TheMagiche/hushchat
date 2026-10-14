@@ -58,7 +58,7 @@ export default function NotFound() {
         href="/"
         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
       >
-        <ArrowLeft className="w-4 h-4" /> Return to PeerChat
+        <ArrowLeft className="w-4 h-4" /> Return to HushChat
       </Link>
     </div>
   );

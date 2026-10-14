@@ -1,6 +1,6 @@
-# PeerChat — Serverless Encrypted P2P Communication App
+# HushChat — Serverless Encrypted P2P Communication App
 
-PeerChat is a browser-first, zero-backend, peer-to-peer communication app built with **Rust / WebAssembly**, **PeerJS**, **WebRTC DataChannels & MediaTracks**, **IndexedDB**, and **Next.js** (with native packaging via **Tauri v2**).
+HushChat is a browser-first, zero-backend, peer-to-peer communication app built with **Rust / WebAssembly**, **PeerJS**, **WebRTC DataChannels & MediaTracks**, **IndexedDB**, and **Next.js** (with native packaging via **Tauri v2**).
 
 ---
 
@@ -23,7 +23,7 @@ flowchart TD
     subgraph BrowserDevice ["Browser / Device"]
         UI["Next.js React UI"] --> Store["Zustand Store + IDB"]
         UI --> Core["Chat-Core Engine"]
-        Core --> WASM["Rust WASM Core (peerchat-core)"]
+        Core --> WASM["Rust WASM Core (HushChat-core)"]
         WASM --> Crypto["Ed25519 / X25519 / ChaCha20-Poly1305"]
     end
 

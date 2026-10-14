@@ -110,7 +110,7 @@ export default function HomePage() {
               <Shield className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="font-semibold text-sm tracking-tight">PeerChat</h1>
+              <h1 className="font-semibold text-sm tracking-tight">HushChat</h1>
               <p className="text-[10px] text-muted-foreground">Serverless P2P Mesh</p>
             </div>
           </div>

@@ -2,9 +2,9 @@
 name = "peerchat-tauri"
 version = "0.1.0"
 edition = "2021"
-authors = ["PeerChat Contributors"]
+authors = ["HushChat Contributors"]
 license = "MIT OR Apache-2.0"
-description = "Tauri backend for PeerChat"
+description = "Tauri backend for HushChat"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

@@ -65,7 +65,7 @@ function EmbedContent() {
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
       <div className="p-2.5 bg-card border-b border-border flex items-center justify-between text-xs">
         <span className="font-semibold text-primary">#{room} (Embedded)</span>
-        <span className="text-[10px] text-muted-foreground">PeerChat E2EE</span>
+        <span className="text-[10px] text-muted-foreground">HushChat E2EE</span>
       </div>
 
       <div className="flex-1 flex flex-col h-full bg-background/50">
@@ -78,7 +78,7 @@ function EmbedContent() {
 
 export default function EmbedPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading PeerChat embed...</div>}>
+    <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading HushChat embed...</div>}>
       <EmbedContent />
     </Suspense>
   );

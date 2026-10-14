@@ -100,7 +100,7 @@ mod tests {
     fn test_aead_roundtrip() {
         let key = [42u8; 32];
         let nonce = make_nonce(1, true);
-        let msg = b"Hello, PeerChat over WebRTC!";
+        let msg = b"Hello, HushChat over WebRTC!";
         let ciphertext = encrypt_aead(&key, &nonce, msg).unwrap();
         assert_ne!(&ciphertext[..], msg);
         let decrypted = decrypt_aead(&key, &nonce, &ciphertext).unwrap();

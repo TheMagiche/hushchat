@@ -2,9 +2,9 @@
 name = "peerchat-wasm"
 version = "0.1.0"
 edition = "2021"
-authors = ["PeerChat Contributors"]
+authors = ["HushChat Contributors"]
 license = "MIT OR Apache-2.0"
-description = "WebAssembly bindings for PeerChat core"
+description = "WebAssembly bindings for HushChat core"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

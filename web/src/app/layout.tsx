@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
-  title: 'PeerChat — Serverless Encrypted P2P Chat',
+  title: 'HushChat — Serverless Encrypted P2P Chat',
   description: 'Browser-first peer-to-peer messaging, rooms, audio/video calls and file transfer powered by Rust, WASM, PeerJS and WebRTC.',
 };
 

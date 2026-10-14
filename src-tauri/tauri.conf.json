@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PeerChat",
+  "productName": "HushChat",
   "version": "0.1.0",
-  "identifier": "com.peerchat.app",
+  "identifier": "com.hushchat.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix web run dev",
+    "beforeDevCommand": "npm --prefix ../web run dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "./scripts/build-wasm.sh && npm --prefix web run build",
+    "beforeBuildCommand": "npm --prefix ../web run build",
     "frontendDist": "../web/out"
   },
   "app": {
     "windows": [
       {
-        "title": "PeerChat",
+        "title": "HushChat",
         "width": 1100,
         "height": 750,
         "resizable": true,

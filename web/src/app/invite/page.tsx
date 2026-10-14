@@ -91,7 +91,7 @@ export default function InvitePage() {
 
           <form onSubmit={handleAddContact} className="space-y-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Contact's PeerChat User ID</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Contact's HushChat User ID</label>
               <input
                 type="text"
                 placeholder="Type here..."

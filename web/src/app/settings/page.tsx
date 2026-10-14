@@ -199,7 +199,7 @@ export default function SettingsPage() {
           </div>
 
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Run PeerChat as a native desktop or mobile application with local hardware-backed storage and zero background telemetry.
+            Run HushChat as a native desktop application via Tauri v2, or install via Progressive Web App on mobile devices.
           </p>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -236,16 +236,14 @@ export default function SettingsPage() {
               <span className="text-[10px] text-muted-foreground">.AppImage / .deb</span>
             </a>
 
-            <a
-              href="https://github.com/TheMagiche/hushchat/releases/latest"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/download"
               className="p-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-border flex flex-col items-center text-center gap-1.5 transition-colors"
             >
               <Smartphone className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-medium">Android</span>
-              <span className="text-[10px] text-muted-foreground">.apk</span>
-            </a>
+              <span className="text-xs font-medium">Mobile PWA</span>
+              <span className="text-[10px] text-muted-foreground">iOS & Android</span>
+            </Link>
           </div>
         </div>
 

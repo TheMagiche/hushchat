@@ -1,9 +1,10 @@
 import type { NextConfig } from 'next';
 
-const isGithubActions = process.env.GITHUB_ACTIONS === 'true';
+const isTauri = process.env.TAURI_ENV_PLATFORM !== undefined || process.env.TAURI_BUILD === 'true';
+const isGithubActions = process.env.GITHUB_ACTIONS === 'true' && !isTauri;
 let basePath = process.env.BASE_PATH || process.env.NEXT_PUBLIC_BASE_PATH || '';
 
-if (isGithubActions && !basePath && process.env.GITHUB_REPOSITORY) {
+if (isGithubActions && !basePath && process.env.GITHUB_REPOSITORY && !isTauri) {
   const repoName = process.env.GITHUB_REPOSITORY.split('/')[1];
   if (repoName && !repoName.endsWith('.github.io')) {
     basePath = `/${repoName}`;
