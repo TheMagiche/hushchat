@@ -141,8 +141,9 @@ export default function RoomClient() {
 
     return () => {
       transport.close();
+      useChatStore.setState({ peers: new Map(), remoteStreams: new Map() });
     };
-  }, [wasm, identity, roomId, secretKey, addMessage, addPeer, removePeer, setTyping, setIncomingCall, loadHistory, getWasmIdentity]);
+  }, [wasm, identity?.userId, identity?.profileName, roomId, secretKey, addMessage, addPeer, removePeer, setTyping, setIncomingCall, loadHistory, getWasmIdentity]);
 
   const handleSendMessage = (text: string) => {
     transportRef.current?.broadcastTextMessage(`room:${roomId}`, text);

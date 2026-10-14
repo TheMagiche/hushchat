@@ -85,22 +85,27 @@ export default function DMClient() {
   const contact = contacts.find((c) => c.userId === targetUserId);
 
   useEffect(() => {
+    if (contact?.ed25519Pub && wasm) {
+      const wasmId = getWasmIdentity();
+      if (wasmId) {
+        try {
+          const sn = wasmId.safetyNumberWith(contact.ed25519Pub);
+          setSafetyNumber(sn);
+          setIsVerified(!!contact.verified);
+        } catch (err) {
+          console.warn('Safety number computation error:', err);
+        }
+      }
+    }
+  }, [contact?.ed25519Pub, contact?.verified, wasm, getWasmIdentity]);
+
+  useEffect(() => {
     if (!wasm || !identity) return;
 
     loadHistory(`dm:${targetUserId}`);
 
     const wasmId = getWasmIdentity() || new wasm.WasmIdentity();
     const peerjsId = wasmId.generatePeerjsId();
-
-    if (contact?.ed25519Pub) {
-      try {
-        const sn = wasmId.safetyNumberWith(contact.ed25519Pub);
-        setSafetyNumber(sn);
-        setIsVerified(contact.verified);
-      } catch (err) {
-        console.warn('Safety number computation error:', err);
-      }
-    }
 
     const transport = new MeshTransport(wasmId, identity.profileName, {
       onMessage: (msg) => {
@@ -148,8 +153,9 @@ export default function DMClient() {
 
     return () => {
       transport.close();
+      useChatStore.setState({ peers: new Map(), remoteStreams: new Map() });
     };
-  }, [wasm, identity, targetUserId, contact, addMessage, addPeer, removePeer, setTyping, setIncomingCall, loadHistory, getWasmIdentity]);
+  }, [wasm, identity?.userId, identity?.profileName, targetUserId, addMessage, addPeer, removePeer, setTyping, setIncomingCall, loadHistory, getWasmIdentity]);
 
   const handleSendMessage = (text: string) => {
     transportRef.current?.broadcastTextMessage(`dm:${targetUserId}`, text);
