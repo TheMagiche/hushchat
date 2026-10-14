@@ -2,6 +2,10 @@ name: Release Tauri App
 
 on:
   push:
+    branches:
+      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -67,9 +71,12 @@ jobs:
           TAURI_BUILD: 'true'
           BASE_PATH: ''
         with:
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          # tauri-action skips GitHub Release uploads unless tagName is set.
+          # Version tags keep their name; main / manual runs publish v__VERSION__.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v__VERSION__' }}
           releaseName: 'HushChat v__VERSION__'
-          releaseBody: 'HushChat native desktop release.'
+          releaseBody: 'HushChat native desktop builds. Download the installer for your platform from the assets below.'
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
