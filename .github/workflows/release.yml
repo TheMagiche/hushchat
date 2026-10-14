@@ -63,6 +63,11 @@ jobs:
           chmod +x ./scripts/build-wasm.sh
           ./scripts/build-wasm.sh
 
+      # === FIX: Regenerates a valid multi-resolution icon.ico for the Windows Compiler ===
+      - name: Regenerate Tauri Icons
+        working-directory: ./web
+        run: npx tauri icon ./src-tauri/icons/icon.png
+
       - name: Build Tauri App & Publish Release
         uses: tauri-apps/tauri-action@v0
         env:
