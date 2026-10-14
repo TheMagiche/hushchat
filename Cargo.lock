@@ -2826,7 +2826,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "peerchat-tauri"
+name = "hushchat-tauri"
 version = "0.1.0"
 dependencies = [
  "peerchat-core",
