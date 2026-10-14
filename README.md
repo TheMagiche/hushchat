@@ -20,25 +20,25 @@ PeerChat is a browser-first, zero-backend, peer-to-peer communication app built 
 
 ```mermaid
 flowchart TD
-    subgraph Browser / Device
-        UI[Next.js React UI] --> Store[Zustand Store + IDB]
-        UI --> Core[Chat-Core Engine]
-        Core --> WASM[Rust WASM Core (peerchat-core)]
-        WASM --> Crypto[Ed25519 / X25519 / ChaCha20-Poly1305]
+    subgraph BrowserDevice ["Browser / Device"]
+        UI["Next.js React UI"] --> Store["Zustand Store + IDB"]
+        UI --> Core["Chat-Core Engine"]
+        Core --> WASM["Rust WASM Core (peerchat-core)"]
+        WASM --> Crypto["Ed25519 / X25519 / ChaCha20-Poly1305"]
     end
 
-    subgraph Signaling Broker
-        Broker[PeerJS Cloud / Self-hosted Broker]
+    subgraph SignalingBroker ["Signaling Broker"]
+        Broker["PeerJS Cloud / Self-hosted Broker"]
     end
 
-    subgraph Direct WebRTC Mesh
-        PeerA[Peer A] <-->|Encrypted DataChannels & Media| PeerB[Peer B]
-        PeerA <-->|Encrypted DataChannels & Media| PeerC[Peer C]
-        PeerB <-->|Encrypted DataChannels & Media| PeerC[Peer C]
+    subgraph WebRTCMesh ["Direct WebRTC Mesh"]
+        PeerA["Peer A"] <-->|"Encrypted DataChannels & Media"| PeerB["Peer B"]
+        PeerA <-->|"Encrypted DataChannels & Media"| PeerC["Peer C"]
+        PeerB <-->|"Encrypted DataChannels & Media"| PeerC["Peer C"]
     end
 
-    Core -.->|Signaling Only| Broker
-    Core === Direct WebRTC Mesh
+    Core -.->|"Signaling Only"| Broker
+    Core === WebRTCMesh
 ```
 
 ---
