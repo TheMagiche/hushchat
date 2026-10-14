@@ -45,6 +45,9 @@ export interface ChatStoreState {
   getWasmIdentity: () => WasmIdentity | null;
   setProfileName: (name: string) => Promise<void>;
   addMessage: (msg: MessageRecord) => Promise<void>;
+  deleteMessage: (msgId: string, convId?: string) => Promise<void>;
+  clearConversationMessages: (convId: string) => Promise<void>;
+  deleteConversation: (convId: string) => Promise<void>;
   setPeers: (peers: PeerItem[]) => void;
   addPeer: (peer: PeerItem) => void;
   removePeer: (userId: string) => void;
@@ -56,6 +59,28 @@ export interface ChatStoreState {
   toggleCamera: () => void;
   toggleScreen: () => void;
 }
+
+function normalizeConvId(convId: string): string {
+  if (convId.startsWith('dm:')) {
+    return `dm:${convId.replace(/^dm:/, '')}`;
+  }
+  const cleanRoom = convId.replace(/^room:/, '').replace(/^#+/, '').replace(/^room:/, '').trim() || 'general';
+  return `room:${cleanRoom}`;
+}
+
+function normalizeConvTitle(convId: string, defaultName?: string): string {
+  if (convId.startsWith('dm:')) {
+    return defaultName || convId.replace(/^dm:/, '').slice(0, 10);
+  }
+  const cleanRoom = convId.replace(/^room:/, '').replace(/^#+/, '').replace(/^room:/, '').trim() || 'general';
+  return `#${cleanRoom}`;
+}
+
+const sortMessagesByTime = (a: MessageRecord, b: MessageRecord) => {
+  const timeDiff = (a.sentAtMs || 0) - (b.sentAtMs || 0);
+  if (timeDiff !== 0) return timeDiff;
+  return (a.lamport || 0) - (b.lamport || 0);
+};
 
 export const useChatStore = create<ChatStoreState>((set, get) => ({
   wasm: null,
@@ -125,14 +150,38 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     }
 
     const contacts = await db.getAll('contacts');
-    const conversations = await db.getAll('conversations');
+    const rawConversations = await db.getAll('conversations');
+
+    // Deduplicate and clean any legacy malformed room keys
+    const convMap = new Map<string, ConversationRecord>();
+    for (const c of rawConversations) {
+      const normalizedId = normalizeConvId(c.id);
+      const normalizedTitle = normalizeConvTitle(normalizedId, c.title);
+      const existing = convMap.get(normalizedId);
+      if (!existing || c.updatedAtMs > existing.updatedAtMs) {
+        convMap.set(normalizedId, {
+          ...c,
+          id: normalizedId,
+          type: normalizedId.startsWith('dm:') ? 'dm' : 'room',
+          title: normalizedTitle,
+        });
+      }
+      if (c.id !== normalizedId) {
+        await db.delete('conversations', c.id);
+      }
+    }
+
+    const dedupedConvs = Array.from(convMap.values()).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+    for (const c of dedupedConvs) {
+      await db.put('conversations', c);
+    }
 
     set({
       wasm,
       wasmIdentity: wasmId,
       identity: currentId,
       contacts,
-      conversations,
+      conversations: dedupedConvs,
     });
   },
 
@@ -165,14 +214,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const exists = messages.some((m) => m.id === msg.id);
     if (exists) return;
 
-    let convId = msg.conversation;
+    let convId = normalizeConvId(msg.conversation);
     // Normalize DM conversation ID so incoming DM messages are stored under dm:<remoteAuthor>
     if (convId.startsWith('dm:') && identity && msg.author !== identity.userId) {
       convId = `dm:${msg.author}`;
-      msg = { ...msg, conversation: convId };
     }
+    msg = { ...msg, conversation: convId };
 
-    const newMessages = [...messages, msg].sort((a, b) => a.lamport - b.lamport || a.sentAtMs - b.sentAtMs);
+    const newMessages = [...messages, msg].sort(sortMessagesByTime);
     set({ messages: newMessages });
 
     const db = await getDB();
@@ -183,8 +232,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const bodyObj = msg.body as {
       Text?: { markdown: string };
       File?: { name: string };
+      Delete?: { target: string };
       System?: unknown;
     };
+
+    if (bodyObj?.Delete?.target) {
+      // If this message is a delete instruction, remove the target
+      await get().deleteMessage(bodyObj.Delete.target, convId);
+      return;
+    }
+
     let preview = 'Sent a message';
     if (bodyObj?.Text?.markdown) {
       preview = bodyObj.Text.markdown;
@@ -195,7 +252,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const updatedConv: ConversationRecord = {
       id: convId,
       type: convId.startsWith('dm:') ? 'dm' : 'room',
-      title: existingConv?.title || (convId.startsWith('dm:') ? (bodyObj?.Text ? msg.author.slice(0, 10) : convId) : convId.replace('room:', '#')),
+      title: normalizeConvTitle(convId, existingConv?.title || (bodyObj?.Text ? msg.author.slice(0, 10) : undefined)),
       lastLamport: msg.lamport,
       unreadCount: 0,
       previewText: preview.slice(0, 60),
@@ -205,6 +262,80 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     await db.put('conversations', updatedConv);
     const updatedList = conversations.filter((c) => c.id !== convId).concat(updatedConv);
     set({ conversations: updatedList.sort((a, b) => b.updatedAtMs - a.updatedAtMs) });
+  },
+
+  deleteMessage: async (msgId: string, convId?: string) => {
+    const { messages, conversations } = get();
+    const filtered = messages.filter((m) => m.id !== msgId);
+    set({ messages: filtered });
+
+    const db = await getDB();
+    await db.delete('messages', msgId);
+
+    // Update conversation preview if needed
+    const targetConvId = convId ? normalizeConvId(convId) : null;
+    if (targetConvId) {
+      const remainingForConv = filtered.filter((m) => m.conversation === targetConvId);
+      const lastMsg = remainingForConv[remainingForConv.length - 1];
+      const existingConv = conversations.find((c) => c.id === targetConvId);
+      if (existingConv) {
+        let preview = 'No messages';
+        if (lastMsg) {
+          const bodyObj = lastMsg.body as { Text?: { markdown: string }; File?: { name: string } };
+          preview = bodyObj?.Text?.markdown || (bodyObj?.File?.name ? `Shared file: ${bodyObj.File.name}` : 'Sent a message');
+        }
+        const updatedConv: ConversationRecord = {
+          ...existingConv,
+          previewText: preview.slice(0, 60),
+          updatedAtMs: lastMsg ? lastMsg.sentAtMs : existingConv.updatedAtMs,
+        };
+        await db.put('conversations', updatedConv);
+        const updatedList = conversations.map((c) => (c.id === targetConvId ? updatedConv : c));
+        set({ conversations: updatedList.sort((a, b) => b.updatedAtMs - a.updatedAtMs) });
+      }
+    }
+  },
+
+  clearConversationMessages: async (convId: string) => {
+    const normalizedId = normalizeConvId(convId);
+    const db = await getDB();
+    const all = await db.getAll('messages');
+    for (const msg of all) {
+      if (msg.conversation === normalizedId) {
+        await db.delete('messages', msg.id);
+      }
+    }
+
+    set((state) => ({
+      messages: state.messages.filter((m) => m.conversation !== normalizedId),
+    }));
+
+    // Update conversation record
+    const { conversations } = get();
+    const existing = conversations.find((c) => c.id === normalizedId);
+    if (existing) {
+      const updatedConv: ConversationRecord = {
+        ...existing,
+        previewText: 'Chat cleared',
+        updatedAtMs: Date.now(),
+      };
+      await db.put('conversations', updatedConv);
+      const updatedList = conversations.map((c) => (c.id === normalizedId ? updatedConv : c));
+      set({ conversations: updatedList.sort((a, b) => b.updatedAtMs - a.updatedAtMs) });
+    }
+  },
+
+  deleteConversation: async (convId: string) => {
+    const normalizedId = normalizeConvId(convId);
+    await get().clearConversationMessages(normalizedId);
+
+    const db = await getDB();
+    await db.delete('conversations', normalizedId);
+
+    set((state) => ({
+      conversations: state.conversations.filter((c) => c.id !== normalizedId),
+      messages: state.messages.filter((m) => m.conversation !== normalizedId),
+    }));
   },
 
   setPeers: (peersList: PeerItem[]) => {
@@ -239,11 +370,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   loadHistory: async (convId: string) => {
+    const normalizedId = normalizeConvId(convId);
     const db = await getDB();
-    const tx = db.transaction('messages', 'readonly');
-    const index = tx.store.index('by-conv-lamport');
-    const all = await index.getAll(IDBKeyRange.bound([convId, 0], [convId, Number.MAX_SAFE_INTEGER]));
-    set({ messages: all });
+    const all = await db.getAll('messages');
+    const convMessages = all
+      .filter((m) => m.conversation === normalizedId)
+      .sort(sortMessagesByTime);
+    set({ messages: convMessages });
   },
 
   addContact: async (contact: ContactRecord) => {

@@ -519,6 +519,12 @@ export class MeshTransport {
 
       if (frame.Msg) {
         this.lamportClock = Math.max(this.lamportClock, frame.Msg.lamport) + 1;
+        const bodyObj = frame.Msg.body as { Delete?: { target: string } };
+        if (bodyObj?.Delete?.target) {
+          useChatStore.getState().deleteMessage(bodyObj.Delete.target, frame.Msg.conversation);
+          return;
+        }
+
         const msgRecord: MessageRecord = {
           id: frame.Msg.id,
           conversation: frame.Msg.conversation,
@@ -696,6 +702,33 @@ export class MeshTransport {
     };
 
     this.events.onMessage?.(localMsg);
+  }
+
+  public async broadcastDeleteMessage(conversation: string, targetMsgId: string) {
+    const wasm = useChatStore.getState().wasm;
+    if (!wasm) return;
+
+    this.lamportClock += 1;
+    const msgId = `msg-del-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
+    const deleteBody = {
+      Delete: {
+        target: targetMsgId,
+      },
+    };
+
+    const signedMsg = wasm.createMessage(
+      this.wasmIdentity,
+      msgId,
+      conversation,
+      this.wasmIdentity.userId(),
+      this.lamportClock,
+      now,
+      deleteBody
+    ) as { id: string; conversation: string; author: string; lamport: number; sent_at_ms: number; body: unknown; sig: number[] };
+
+    this.sendSealedFrame({ Msg: signedMsg });
+    await useChatStore.getState().deleteMessage(targetMsgId, conversation);
   }
 
   public sendTyping(isTyping: boolean) {

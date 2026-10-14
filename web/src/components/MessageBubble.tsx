@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MessageRecord } from '../db/schema';
 import { MarkdownRenderer } from './Markdown';
 import { formatTime } from '../lib/utils';
-import { CheckCheck, ShieldCheck, Download, FileText, Image as ImageIcon } from 'lucide-react';
+import { CheckCheck, ShieldCheck, Download, FileText, Trash2 } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: MessageRecord;
   isSelf: boolean;
+  onMediaLoad?: () => void;
+  onDelete?: (msgId: string) => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -17,7 +19,14 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({
+  message,
+  isSelf,
+  onMediaLoad,
+  onDelete,
+}) => {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const body = message.body as {
     Text?: { markdown: string };
     File?: {
@@ -34,8 +43,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf })
   const file = body?.File;
   const isImageFile = file && (file.mime?.startsWith('image/') || file.data_url?.startsWith('data:image'));
 
+  const handleDelete = () => {
+    if (confirmDelete) {
+      onDelete?.(message.id);
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  };
+
   return (
-    <div className={`flex flex-col mb-4 ${isSelf ? 'items-end' : 'items-start'}`}>
+    <div className={`group relative flex flex-col ${isSelf ? 'items-end' : 'items-start'}`}>
       <div className="flex items-center gap-1.5 mb-1 px-1">
         <span className="text-[11px] font-medium text-muted-foreground">
           {isSelf ? 'You' : message.author.slice(0, 10)}
@@ -46,10 +64,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf })
         <span title="Cryptographically signed & verified">
           <ShieldCheck className="w-3 h-3 text-emerald-400" />
         </span>
+
+        {/* Delete message button */}
+        {onDelete && (
+          <button
+            onClick={handleDelete}
+            className={`opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive text-[10px] flex items-center gap-1 ${
+              confirmDelete ? '!opacity-100 text-destructive font-medium' : ''
+            }`}
+            title={confirmDelete ? 'Click again to confirm delete' : 'Delete message'}
+          >
+            <Trash2 className="w-3 h-3" />
+            {confirmDelete && <span>Confirm</span>}
+          </button>
+        )}
       </div>
 
       <div
-        className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm space-y-2 ${
+        className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-xs space-y-2 ${
           isSelf
             ? 'bg-primary text-primary-foreground rounded-tr-xs'
             : 'bg-card text-card-foreground border border-border rounded-tl-xs'
@@ -63,7 +95,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf })
                 <img
                   src={file.data_url}
                   alt={file.name}
-                  className="max-h-72 max-w-full rounded-xl object-contain border border-black/10 bg-black/20"
+                  loading="lazy"
+                  onLoad={onMediaLoad}
+                  className="max-h-72 max-w-full rounded-xl object-contain border border-black/10 bg-black/20 block"
                 />
                 <div className="flex items-center justify-between text-[11px] pt-1">
                   <span className="truncate opacity-80">{file.name}</span>
@@ -119,8 +153,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf })
           </div>
         )}
 
-        {/* Text rendering */}
-        {text && <MarkdownRenderer content={text} />}
+        {/* Text rendering with sender contrast support */}
+        {text && <MarkdownRenderer content={text} isSelf={isSelf} />}
       </div>
 
       {isSelf && (

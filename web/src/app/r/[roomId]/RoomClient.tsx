@@ -23,6 +23,7 @@ import {
   PhoneOff,
   X,
   PhoneIncoming,
+  Trash2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -30,7 +31,9 @@ export default function RoomClient() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const roomId = (searchParams?.get('id') || searchParams?.get('room') || (params?.roomId as string) || 'general');
+  const rawRoomId = (searchParams?.get('id') || searchParams?.get('room') || (params?.roomId as string) || 'general');
+  const roomId = rawRoomId.replace(/^room:/, '').replace(/^#+/, '').replace(/^room:/, '').trim() || 'general';
+
   const {
     identity,
     wasm,
@@ -44,6 +47,8 @@ export default function RoomClient() {
     micEnabled,
     cameraEnabled,
     addMessage,
+    deleteMessage,
+    clearConversationMessages,
     addPeer,
     removePeer,
     setTyping,
@@ -58,6 +63,7 @@ export default function RoomClient() {
 
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [secretKey, setSecretKey] = useState<string | undefined>(undefined);
   const [showPeersDrawer, setShowPeersDrawer] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -146,6 +152,15 @@ export default function RoomClient() {
     transportRef.current?.broadcastFileMessage(`room:${roomId}`, file);
   };
 
+  const handleDeleteMessage = (msgId: string) => {
+    transportRef.current?.broadcastDeleteMessage(`room:${roomId}`, msgId);
+  };
+
+  const handleClearChat = async () => {
+    await clearConversationMessages(`room:${roomId}`);
+    setShowClearConfirm(false);
+  };
+
   const handleTyping = (isTyping: boolean) => {
     transportRef.current?.sendTyping(isTyping);
   };
@@ -186,7 +201,8 @@ export default function RoomClient() {
   };
 
   const copyRoomLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const cleanUrl = `${window.location.origin}/r?id=${roomId}${window.location.hash}`;
+    navigator.clipboard.writeText(cleanUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -245,6 +261,14 @@ export default function RoomClient() {
             title="Show Room QR Code"
           >
             <QrCode className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            className="p-2 text-muted-foreground hover:text-destructive rounded-xl hover:bg-destructive/10 transition-colors border border-border"
+            title="Clear Chat History"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
 
           <button
@@ -329,6 +353,16 @@ export default function RoomClient() {
                 <button
                   onClick={() => {
                     setShowMobileMenu(false);
+                    setShowClearConfirm(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded-xl transition-colors text-left"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Clear Chat
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
                     setShowPeersDrawer(true);
                   }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-secondary rounded-xl transition-colors text-left"
@@ -340,6 +374,32 @@ export default function RoomClient() {
           </div>
         </div>
       </div>
+
+      {/* Clear Chat Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="font-semibold text-sm">Clear Room Chat?</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              This will delete all messages and media stored locally for #{roomId}.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearChat}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+              >
+                Clear Messages
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Incoming Call Notification Banner */}
       {incomingCall && !callActive && (
@@ -399,7 +459,10 @@ export default function RoomClient() {
               Scan this QR code from any camera or mobile device to immediately join this encrypted mesh room.
             </p>
             <div className="bg-white p-4 rounded-xl inline-block mx-auto">
-              <QRCodeSVG value={typeof window !== 'undefined' ? window.location.href : ''} size={200} />
+              <QRCodeSVG
+                value={typeof window !== 'undefined' ? `${window.location.origin}/r?id=${roomId}${window.location.hash}` : ''}
+                size={200}
+              />
             </div>
             <button
               onClick={() => setShowQR(false)}
@@ -416,7 +479,11 @@ export default function RoomClient() {
         <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
           {/* Scrollable messages occupying full area */}
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <MessageList messages={messages} currentUserId={identity?.userId || ''} />
+            <MessageList
+              messages={messages}
+              currentUserId={identity?.userId || ''}
+              onDeleteMessage={handleDeleteMessage}
+            />
           </div>
 
           {typingUsers.size > 0 && (

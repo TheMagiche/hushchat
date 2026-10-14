@@ -16,15 +16,12 @@ import {
   Copy,
   Check,
   Download,
-  Laptop,
-  Monitor,
-  Terminal,
-  Smartphone,
+  Trash2,
 } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
-  const { identity, contacts, conversations, initApp } = useChatStore();
+  const { identity, contacts, conversations, initApp, deleteConversation } = useChatStore();
   const [roomName, setRoomName] = useState('');
   const [copiedId, setCopiedId] = useState(false);
 
@@ -35,7 +32,8 @@ export default function HomePage() {
   const handleCreatePublicRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomName.trim()) return;
-    router.push(`/r?id=${encodeURIComponent(roomName.trim().toLowerCase().replace(/\s+/g, '-'))}`);
+    const clean = roomName.trim().replace(/^room:/, '').replace(/^#+/, '').replace(/^room:/, '').toLowerCase().replace(/\s+/g, '-');
+    router.push(`/r?id=${encodeURIComponent(clean)}`);
   };
 
   const handleCreatePrivateRoom = () => {
@@ -49,6 +47,12 @@ export default function HomePage() {
     navigator.clipboard.writeText(identity.userId);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const handleDeleteConv = async (e: React.MouseEvent, convId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await deleteConversation(convId);
   };
 
   return (
@@ -118,18 +122,32 @@ export default function HomePage() {
               <p className="text-xs text-muted-foreground/60 px-1 py-2">No active conversations</p>
             ) : (
               <div className="space-y-1">
-                {conversations.map((conv) => (
-                  <Link
-                    key={conv.id}
-                    href={conv.id.startsWith('dm:') ? `/dm?id=${conv.id.replace('dm:', '')}` : `/r?id=${conv.id}`}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-secondary/60 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium truncate">{conv.title}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{conv.previewText}</p>
+                {conversations.map((conv) => {
+                  const isDm = conv.id.startsWith('dm:');
+                  const cleanTarget = isDm
+                    ? conv.id.replace('dm:', '')
+                    : conv.id.replace(/^room:/, '').replace(/^#+/, '');
+                  const linkHref = isDm ? `/dm?id=${cleanTarget}` : `/r?id=${cleanTarget}`;
+
+                  return (
+                    <div
+                      key={conv.id}
+                      className="group flex items-center justify-between p-2 rounded-lg hover:bg-secondary/60 transition-colors"
+                    >
+                      <Link href={linkHref} className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{conv.title}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{conv.previewText}</p>
+                      </Link>
+                      <button
+                        onClick={(e) => handleDeleteConv(e, conv.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive rounded transition-all"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  </Link>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -247,19 +265,6 @@ export default function HomePage() {
                 Download Apps <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
-          </div>
-
-          {/* Quick info badges */}
-          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground pt-4 border-t border-border">
-            <span className="flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-emerald-400" /> Rust + WASM Crypto
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-primary" /> Full Mesh Topology
-            </span>
-            <span className="flex items-center gap-1.5">
-              <MessageSquare className="w-3.5 h-3.5 text-indigo-400" /> Ephemeral by Default
-            </span>
           </div>
         </div>
       </div>

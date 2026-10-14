@@ -18,13 +18,16 @@ import {
   MoreVertical,
   Shield,
   PhoneIncoming,
+  Trash2,
 } from 'lucide-react';
 
 export default function DMClient() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const targetUserId = (searchParams?.get('id') || searchParams?.get('userId') || (params?.userId as string) || 'welcome');
+  const rawTargetId = (searchParams?.get('id') || searchParams?.get('userId') || (params?.userId as string) || 'welcome');
+  const targetUserId = rawTargetId.replace(/^dm:/, '').trim();
+
   const {
     identity,
     wasm,
@@ -39,6 +42,8 @@ export default function DMClient() {
     micEnabled,
     cameraEnabled,
     addMessage,
+    deleteMessage,
+    clearConversationMessages,
     addPeer,
     removePeer,
     setTyping,
@@ -54,6 +59,7 @@ export default function DMClient() {
 
   const [safetyNumber, setSafetyNumber] = useState<string>('');
   const [isVerified, setIsVerified] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const transportRef = useRef<MeshTransport | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -151,6 +157,15 @@ export default function DMClient() {
 
   const handleSendFile = (file: AttachedFile) => {
     transportRef.current?.broadcastFileMessage(`dm:${targetUserId}`, file);
+  };
+
+  const handleDeleteMessage = (msgId: string) => {
+    transportRef.current?.broadcastDeleteMessage(`dm:${targetUserId}`, msgId);
+  };
+
+  const handleClearChat = async () => {
+    await clearConversationMessages(`dm:${targetUserId}`);
+    setShowClearConfirm(false);
   };
 
   const handleTyping = (isTyping: boolean) => {
@@ -265,6 +280,14 @@ export default function DMClient() {
           )}
 
           <button
+            onClick={() => setShowClearConfirm(true)}
+            className="p-2 text-muted-foreground hover:text-destructive rounded-xl hover:bg-destructive/10 transition-colors border border-border"
+            title="Clear Chat History"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+
+          <button
             onClick={toggleVerification}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors border ${
               isVerified
@@ -314,6 +337,16 @@ export default function DMClient() {
               <button
                 onClick={() => {
                   setShowMobileMenu(false);
+                  setShowClearConfirm(true);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded-xl transition-colors text-left"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear Chat
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowMobileMenu(false);
                   toggleVerification();
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-secondary rounded-xl transition-colors text-left"
@@ -325,6 +358,32 @@ export default function DMClient() {
           )}
         </div>
       </div>
+
+      {/* Clear Chat Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="font-semibold text-sm">Clear Conversation?</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              This will delete all messages and media stored locally for this contact.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearChat}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+              >
+                Clear Messages
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Safety number banner */}
       {safetyNumber && (
@@ -387,7 +446,11 @@ export default function DMClient() {
       <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
         {/* Scrollable messages container */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <MessageList messages={messages} currentUserId={identity?.userId || ''} />
+          <MessageList
+            messages={messages}
+            currentUserId={identity?.userId || ''}
+            onDeleteMessage={handleDeleteMessage}
+          />
         </div>
 
         {typingUsers.size > 0 && (
