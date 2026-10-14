@@ -62,17 +62,17 @@ export default function DownloadPage() {
         { label: 'Homebrew (Coming Soon)', url: RELEASES_URL, note: 'brew install peerchat' },
       ],
     },
-    {
-      id: 'windows',
-      name: 'Windows',
-      icon: <Monitor className="w-5 h-5 text-blue-400" />,
-      tag: 'Windows 10 / 11 (64-bit)',
-      description: 'Lightweight native Windows executable powered by Tauri v2 with background tray support.',
-      formats: [
-        { label: 'Download .msi Installer (64-bit)', url: `${LATEST_RELEASE}` },
-        { label: 'Download Portable .exe', url: `${LATEST_RELEASE}` },
-      ],
-    },
+    // {
+    //   id: 'windows',
+    //   name: 'Windows',
+    //   icon: <Monitor className="w-5 h-5 text-blue-400" />,
+    //   tag: 'Windows 10 / 11 (64-bit)',
+    //   description: 'Lightweight native Windows executable powered by Tauri v2 with background tray support.',
+    //   formats: [
+    //     { label: 'Download .msi Installer (64-bit)', url: `${LATEST_RELEASE}` },
+    //     { label: 'Download Portable .exe', url: `${LATEST_RELEASE}` },
+    //   ],
+    // },
     {
       id: 'linux',
       name: 'Linux',

@@ -21,9 +21,6 @@ jobs:
           - platform: 'ubuntu-22.04'
             args: ''
             targets: 'wasm32-unknown-unknown'
-          - platform: 'windows-latest'
-            args: ''
-            targets: 'wasm32-unknown-unknown'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -62,11 +59,6 @@ jobs:
         run: |
           chmod +x ./scripts/build-wasm.sh
           ./scripts/build-wasm.sh
-
-      # === FIX: Regenerates a valid multi-resolution icon.ico for the Windows Compiler ===
-      - name: Regenerate Tauri Icons
-        run: npx @tauri-apps/cli icon ./src-tauri/icons/icon.png
-
 
       - name: Build Tauri App & Publish Release
         uses: tauri-apps/tauri-action@v0
