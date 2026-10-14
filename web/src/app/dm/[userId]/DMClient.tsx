@@ -243,7 +243,7 @@ export default function DMClient() {
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <h2 className="font-semibold text-sm truncate">
-                {contact?.name || `Peer-${targetUserId.slice(-4)}`}
+                {contact?.name || peers.get(targetUserId)?.name || `Peer-${targetUserId.slice(-4)}`}
               </h2>
               {isVerified ? (
                 <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">

@@ -55,6 +55,7 @@ export interface ChatStoreState {
   setIncomingCall: (call: IncomingCallInfo | null) => void;
   loadHistory: (convId: string) => Promise<void>;
   addContact: (contact: ContactRecord) => Promise<void>;
+  updateContactProfile: (userId: string, name: string, ed25519Pub?: Uint8Array) => Promise<void>;
   deleteContact: (userId: string) => Promise<void>;
   toggleMic: () => void;
   toggleCamera: () => void;
@@ -385,6 +386,38 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     await db.put('contacts', contact);
     const contacts = await db.getAll('contacts');
     set({ contacts });
+  },
+
+  updateContactProfile: async (userId: string, name: string, ed25519Pub?: Uint8Array) => {
+    if (!userId || !name) return;
+    const { contacts, conversations } = get();
+    const db = await getDB();
+    const existing = contacts.find((c) => c.userId === userId);
+
+    if (existing) {
+      const hasPub = ed25519Pub && ed25519Pub.length === 32 && ed25519Pub.some((b) => b !== 0);
+      const updated: ContactRecord = {
+        ...existing,
+        name: name.trim() || existing.name,
+        lastSeenMs: Date.now(),
+        status: 'online',
+        ed25519Pub: hasPub ? ed25519Pub : existing.ed25519Pub,
+      };
+      await db.put('contacts', updated);
+      const updatedContacts = contacts.map((c) => (c.userId === userId ? updated : c));
+      set({ contacts: updatedContacts });
+    }
+
+    // Update matching DM conversation title
+    const dmConvId = `dm:${userId}`;
+    const conv = conversations.find((c) => c.id === dmConvId);
+    if (conv && conv.title !== name) {
+      const updatedConv = { ...conv, title: name };
+      await db.put('conversations', updatedConv);
+      set({
+        conversations: conversations.map((c) => (c.id === dmConvId ? updatedConv : c)),
+      });
+    }
   },
 
   deleteContact: async (userId: string) => {

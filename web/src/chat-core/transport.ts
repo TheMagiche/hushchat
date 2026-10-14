@@ -49,6 +49,22 @@ function toUint8Array(val: any): Uint8Array {
   return new Uint8Array(0);
 }
 
+function hashChannelId(id: string): string {
+  let h1 = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h1 ^= id.charCodeAt(i);
+    h1 = Math.imul(h1, 0x01000193);
+  }
+  let h2 = 0x84222325;
+  for (let i = 0; i < id.length; i++) {
+    h2 ^= (id.charCodeAt(i) * 31);
+    h2 = Math.imul(h2, 0x01000193);
+  }
+  const part1 = (h1 >>> 0).toString(16).padStart(8, '0');
+  const part2 = (h2 >>> 0).toString(16).padStart(8, '0');
+  return `${part1}${part2}`;
+}
+
 export class MeshTransport {
   private peer: any = null;
   private anchorPeer: any = null;
@@ -58,7 +74,8 @@ export class MeshTransport {
   private connections: Map<string, ConnectionEntry> = new Map();
   private calls: Map<string, MediaConnection> = new Map();
   private pendingIncomingCalls: Map<string, any> = new Map();
-  private chunkedIncoming: Map<string, { chunks: (number[] | Uint8Array)[]; received: number; total: number }> = new Map();
+  private chunkedIncoming: Map<string, { chunks: Uint8Array[]; received: number; total: number }> = new Map();
+  private connectFallbacks: Map<string, NodeJS.Timeout> = new Map();
   private currentRoomId: string | null = null;
   private roomKeyBytes: Uint8Array | null = null;
   private lamportClock = 0;
@@ -117,8 +134,13 @@ export class MeshTransport {
       }
     }
 
-    const sanitized = roomId.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 24);
-    const anchorId = `pcr-${sanitized}`;
+    let anchorId: string;
+    if (roomId.startsWith('dm-')) {
+      anchorId = `pcr-dm-${hashChannelId(roomId)}`;
+    } else {
+      const sanitized = roomId.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 24);
+      anchorId = `pcr-${sanitized}`;
+    }
     this.tryClaimAnchor(anchorId);
   }
 
@@ -195,7 +217,7 @@ export class MeshTransport {
           // 3. Register newcomer in anchor directory
           this.anchorMembers.set(peerId, newMember);
 
-          // 4. Anchor holder's main peer connects directly to newcomer
+          // 4. Connect to newcomer with deterministic tie-breaker
           if (this.peer && peerId !== this.peer.id) {
             this.connectToPeer(peerId, name);
           }
@@ -268,6 +290,35 @@ export class MeshTransport {
     if (targetPeerId === this.peer.id) return;
     if (this.connections.has(targetPeerId)) return;
 
+    // Tie-breaker: peer with lexicographically higher peer ID initiates outbound DataConnection
+    const shouldInitiate = this.peer.id > targetPeerId;
+    if (!shouldInitiate) {
+      // Remote peer will initiate connection; set fallback timer in case remote doesn't initiate
+      if (!this.connectFallbacks.has(targetPeerId)) {
+        const timer = setTimeout(() => {
+          this.connectFallbacks.delete(targetPeerId);
+          if (!this.isDestroyed && this.peer && !this.connections.has(targetPeerId)) {
+            this.forceInitiatePeerConnection(targetPeerId, expectedName);
+          }
+        }, 3000);
+        this.connectFallbacks.set(targetPeerId, timer);
+      }
+      return;
+    }
+
+    this.forceInitiatePeerConnection(targetPeerId, expectedName);
+  }
+
+  private forceInitiatePeerConnection(targetPeerId: string, expectedName?: string) {
+    if (!this.peer || this.isDestroyed) return;
+    if (this.connections.has(targetPeerId)) return;
+
+    const timer = this.connectFallbacks.get(targetPeerId);
+    if (timer) {
+      clearTimeout(timer);
+      this.connectFallbacks.delete(targetPeerId);
+    }
+
     const conn = this.peer.connect(targetPeerId, { reliable: true });
     this.connections.set(targetPeerId, { conn, name: expectedName });
 
@@ -309,22 +360,39 @@ export class MeshTransport {
   private setupIncomingHandlers() {
     if (!this.peer) return;
 
-    this.peer.on('connection', (conn: any) => {
-      if (!this.connections.has(conn.peer)) {
-        this.connections.set(conn.peer, { conn });
+    this.peer.on('connection', (incomingConn: any) => {
+      const remotePeerId = incomingConn.peer;
+      const existing = this.connections.get(remotePeerId);
+
+      // Handle connection glare: if an open session already exists on our connection
+      if (existing?.session && existing.conn?.open) {
+        if (this.peer && this.peer.id > remotePeerId) {
+          // Authoritative outbound connection wins
+          try {
+            incomingConn.close();
+          } catch (e) {}
+          return;
+        } else {
+          // Authoritative inbound connection wins
+          try {
+            existing.conn.close();
+          } catch (e) {}
+        }
       }
 
-      conn.on('data', (data: any) => {
-        this.handleIncomingData(conn.peer, data, conn);
+      this.connections.set(remotePeerId, { conn: incomingConn });
+
+      incomingConn.on('data', (data: any) => {
+        this.handleIncomingData(remotePeerId, data, incomingConn);
       });
 
-      conn.on('close', () => {
-        this.handlePeerDisconnect(conn.peer);
+      incomingConn.on('close', () => {
+        this.handlePeerDisconnect(remotePeerId);
       });
 
-      conn.on('error', (err: any) => {
+      incomingConn.on('error', (err: any) => {
         console.warn('Incoming peer connection error:', err);
-        this.handlePeerDisconnect(conn.peer);
+        this.handlePeerDisconnect(remotePeerId);
       });
     });
 
@@ -411,6 +479,7 @@ export class MeshTransport {
           const session = wasm.WasmSession.fromPointer(resp.sessionPtr);
           const remoteUserId = session.remoteUserId();
           const remoteName = data.profile?.name || `Peer-${remoteUserId.slice(-4)}`;
+          const remoteEdPub = new Uint8Array(session.remoteEdPub());
 
           this.connections.set(senderPeerId, {
             conn,
@@ -426,11 +495,13 @@ export class MeshTransport {
             profile: { name: this.profileName },
           });
 
+          useChatStore.getState().updateContactProfile(remoteUserId, remoteName, remoteEdPub);
+
           const peerItem: PeerItem = {
             userId: remoteUserId,
             peerjsId: senderPeerId,
             name: remoteName,
-            ed25519Pub: new Uint8Array(session.remoteEdPub()),
+            ed25519Pub: remoteEdPub,
             isAnchor: false,
           };
           this.events.onPeerJoin?.(peerItem);
@@ -454,6 +525,7 @@ export class MeshTransport {
 
         const remoteUserId = session.remoteUserId();
         const remoteName = data.profile?.name || connObj.name || `Peer-${remoteUserId.slice(-4)}`;
+        const remoteEdPub = new Uint8Array(session.remoteEdPub());
 
         this.connections.set(senderPeerId, {
           conn,
@@ -462,11 +534,13 @@ export class MeshTransport {
           name: remoteName,
         });
 
+        useChatStore.getState().updateContactProfile(remoteUserId, remoteName, remoteEdPub);
+
         const peerItem: PeerItem = {
           userId: remoteUserId,
           peerjsId: senderPeerId,
           name: remoteName,
-          ed25519Pub: new Uint8Array(session.remoteEdPub()),
+          ed25519Pub: remoteEdPub,
           isAnchor: false,
         };
         this.events.onPeerJoin?.(peerItem);
@@ -530,6 +604,10 @@ export class MeshTransport {
           body: unknown;
           sig: number[];
         };
+        Profile?: {
+          name: string;
+          avatar_hash?: unknown;
+        };
         Typing?: boolean;
       };
 
@@ -552,6 +630,23 @@ export class MeshTransport {
           isDelivered: true,
         };
         this.events.onMessage?.(msgRecord);
+      }
+
+      if (frame.Profile && frame.Profile.name) {
+        const remoteUserId = connObj.userId || connObj.session.remoteUserId();
+        const updatedName = frame.Profile.name;
+        connObj.name = updatedName;
+        const remoteEdPub = new Uint8Array(connObj.session.remoteEdPub());
+
+        useChatStore.getState().updateContactProfile(remoteUserId, updatedName, remoteEdPub);
+
+        this.events.onPeerJoin?.({
+          userId: remoteUserId,
+          peerjsId: senderPeerId,
+          name: updatedName,
+          ed25519Pub: remoteEdPub,
+          isAnchor: false,
+        });
       }
 
       if (frame.Typing !== undefined) {
@@ -592,6 +687,11 @@ export class MeshTransport {
         }
       }
     }
+  }
+
+  public broadcastProfile(name: string) {
+    this.profileName = name;
+    this.sendSealedFrame({ Profile: { name, avatar_hash: null } });
   }
 
   public broadcastCallState(active: boolean) {
@@ -769,6 +869,10 @@ export class MeshTransport {
 
   public close() {
     this.isDestroyed = true;
+    for (const [_, timer] of this.connectFallbacks) {
+      clearTimeout(timer);
+    }
+    this.connectFallbacks.clear();
     this.connections.forEach((c) => c.conn.close());
     this.connections.clear();
     this.calls.forEach((c) => c.close());
