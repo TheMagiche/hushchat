@@ -65,8 +65,8 @@ jobs:
 
       # === FIX: Regenerates a valid multi-resolution icon.ico for the Windows Compiler ===
       - name: Regenerate Tauri Icons
-        working-directory: ./web
-        run: npx @tauri-apps/cli icon ./src-tauri/icons/icon.png --config-dir ./src-tauri
+        run: npx @tauri-apps/cli icon ./src-tauri/icons/icon.png
+
 
       - name: Build Tauri App & Publish Release
         uses: tauri-apps/tauri-action@v0
