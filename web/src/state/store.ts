@@ -55,6 +55,7 @@ export interface ChatStoreState {
   setIncomingCall: (call: IncomingCallInfo | null) => void;
   loadHistory: (convId: string) => Promise<void>;
   addContact: (contact: ContactRecord) => Promise<void>;
+  deleteContact: (userId: string) => Promise<void>;
   toggleMic: () => void;
   toggleCamera: () => void;
   toggleScreen: () => void;
@@ -382,6 +383,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   addContact: async (contact: ContactRecord) => {
     const db = await getDB();
     await db.put('contacts', contact);
+    const contacts = await db.getAll('contacts');
+    set({ contacts });
+  },
+
+  deleteContact: async (userId: string) => {
+    const db = await getDB();
+    await db.delete('contacts', userId);
     const contacts = await db.getAll('contacts');
     set({ contacts });
   },

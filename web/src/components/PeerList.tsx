@@ -1,6 +1,6 @@
-import React from 'react';
-import { PeerItem } from '../state/store';
-import { Users, Shield, Radio, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { PeerItem, useChatStore } from '../state/store';
+import { Users, Radio, X, UserPlus, UserCheck } from 'lucide-react';
 
 interface PeerListProps {
   peers: PeerItem[];
@@ -9,6 +9,31 @@ interface PeerListProps {
 }
 
 export const PeerList: React.FC<PeerListProps> = ({ peers, myUserId, onClose }) => {
+  const { contacts, addContact } = useChatStore();
+  const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
+
+  const handleAddPeerContact = async (peer: PeerItem) => {
+    await addContact({
+      userId: peer.userId,
+      name: peer.name || `Peer-${peer.userId.slice(-4)}`,
+      ed25519Pub: peer.ed25519Pub || new Uint8Array(32),
+      x25519Pub: new Uint8Array(32),
+      verified: !!peer.verified,
+      blocked: false,
+      lastSeenMs: Date.now(),
+      status: 'online',
+    });
+
+    setJustAdded((prev) => new Set(prev).add(peer.userId));
+    setTimeout(() => {
+      setJustAdded((prev) => {
+        const next = new Set(prev);
+        next.delete(peer.userId);
+        return next;
+      });
+    }, 2500);
+  };
+
   return (
     <div className="w-full h-full bg-card p-4 flex flex-col">
       <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
@@ -48,33 +73,50 @@ export const PeerList: React.FC<PeerListProps> = ({ peers, myUserId, onClose }) 
             Waiting for peers to join this room...
           </div>
         ) : (
-          peers.map((peer) => (
-            <div
-              key={peer.userId}
-              className="flex items-center justify-between p-2.5 rounded-xl hover:bg-secondary/40 border border-transparent hover:border-border transition-colors"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium truncate">{peer.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate font-mono">
-                    {peer.userId.slice(0, 16)}...
-                  </p>
+          peers.map((peer) => {
+            const isAlreadyContact = contacts.some((c) => c.userId === peer.userId) || justAdded.has(peer.userId);
+
+            return (
+              <div
+                key={peer.userId}
+                className="flex items-center justify-between p-2.5 rounded-xl hover:bg-secondary/40 border border-transparent hover:border-border transition-colors"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium truncate">{peer.name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate font-mono">
+                      {peer.userId.slice(0, 16)}...
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {peer.isAnchor && (
+                    <span title="Anchor Node">
+                      <Radio className="w-3.5 h-3.5 text-amber-400" />
+                    </span>
+                  )}
+                  {isAlreadyContact ? (
+                    <span
+                      className="p-1 rounded-lg text-emerald-400 bg-emerald-500/10 text-xs flex items-center"
+                      title="Contact saved"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleAddPeerContact(peer)}
+                      className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-secondary transition-colors"
+                      title="Add to contacts"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                {peer.isAnchor && (
-                  <span title="Anchor Node">
-                    <Radio className="w-3.5 h-3.5 text-amber-400" />
-                  </span>
-                )}
-                <span title="Verified E2EE Session">
-                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                </span>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

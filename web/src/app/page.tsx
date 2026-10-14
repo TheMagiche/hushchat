@@ -17,11 +17,25 @@ import {
   Check,
   Download,
   Trash2,
+  Search,
+  X,
+  UserPlus,
 } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
-  const { identity, contacts, conversations, initApp, deleteConversation } = useChatStore();
+  const {
+    identity,
+    contacts,
+    conversations,
+    initApp,
+    deleteConversation,
+    deleteContact,
+  } = useChatStore();
+
+  const [activeTab, setActiveTab] = useState<'chats' | 'contacts'>('chats');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [copiedId, setCopiedId] = useState(false);
 
@@ -32,7 +46,13 @@ export default function HomePage() {
   const handleCreatePublicRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomName.trim()) return;
-    const clean = roomName.trim().replace(/^room:/, '').replace(/^#+/, '').replace(/^room:/, '').toLowerCase().replace(/\s+/g, '-');
+    const clean = roomName
+      .trim()
+      .replace(/^room:/, '')
+      .replace(/^#+/, '')
+      .replace(/^room:/, '')
+      .toLowerCase()
+      .replace(/\s+/g, '-');
     router.push(`/r?id=${encodeURIComponent(clean)}`);
   };
 
@@ -54,6 +74,30 @@ export default function HomePage() {
     e.stopPropagation();
     await deleteConversation(convId);
   };
+
+  const handleDeleteContact = async (e: React.MouseEvent, userId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await deleteContact(userId);
+  };
+
+  const filteredConversations = conversations.filter((c) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      c.title.toLowerCase().includes(query) ||
+      (c.previewText && c.previewText.toLowerCase().includes(query))
+    );
+  });
+
+  const filteredContacts = contacts.filter((c) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(query) ||
+      c.userId.toLowerCase().includes(query)
+    );
+  });
 
   return (
     <div className="flex-1 flex flex-col md:flex-row h-screen overflow-hidden bg-background">
@@ -110,76 +154,173 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Conversations & Contacts tabs */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-4">
-          <div>
-            <div className="flex items-center justify-between px-1 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Recent Chats
-              </span>
-            </div>
-            {conversations.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 px-1 py-2">No active conversations</p>
-            ) : (
-              <div className="space-y-1">
-                {conversations.map((conv) => {
-                  const isDm = conv.id.startsWith('dm:');
-                  const cleanTarget = isDm
-                    ? conv.id.replace('dm:', '')
-                    : conv.id.replace(/^room:/, '').replace(/^#+/, '');
-                  const linkHref = isDm ? `/dm?id=${cleanTarget}` : `/r?id=${cleanTarget}`;
+        {/* Tab Selection Header with Search on Top-Right */}
+        <div className="px-3 pt-1 pb-2 border-b border-border/70 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1 bg-secondary/70 p-0.5 rounded-xl">
+              <button
+                onClick={() => setActiveTab('chats')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  activeTab === 'chats'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Chats</span>
+                <span className="text-[10px] opacity-75">({conversations.length})</span>
+              </button>
 
-                  return (
-                    <div
-                      key={conv.id}
-                      className="group flex items-center justify-between p-2 rounded-lg hover:bg-secondary/60 transition-colors"
+              <button
+                onClick={() => setActiveTab('contacts')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  activeTab === 'contacts'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Contacts</span>
+                <span className="text-[10px] opacity-75">({contacts.length})</span>
+              </button>
+            </div>
+
+            {/* Search Toggle Button on Top-Right */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  setShowSearch(!showSearch);
+                  if (showSearch) setSearchQuery('');
+                }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  showSearch || searchQuery
+                    ? 'bg-primary/20 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+                title="Search recent chats or contacts"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              {activeTab === 'contacts' && (
+                <Link
+                  href="/invite"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  title="Add new contact"
+                >
+                  <UserPlus className="w-4 h-4" />
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Search bar input if open */}
+          {(showSearch || searchQuery) && (
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={activeTab === 'chats' ? 'Search chats...' : 'Search contacts...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+                className="w-full bg-background border border-border rounded-xl pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Tab Content List Area */}
+        <div className="flex-1 overflow-y-auto p-3">
+          {activeTab === 'chats' && (
+            <div>
+              {filteredConversations.length === 0 ? (
+                <div className="text-center py-8 text-xs text-muted-foreground/70">
+                  {searchQuery ? 'No chats matching search' : 'No active conversations'}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredConversations.map((conv) => {
+                    const isDm = conv.id.startsWith('dm:');
+                    const cleanTarget = isDm
+                      ? conv.id.replace('dm:', '')
+                      : conv.id.replace(/^room:/, '').replace(/^#+/, '');
+                    const linkHref = isDm ? `/dm?id=${cleanTarget}` : `/r?id=${cleanTarget}`;
+
+                    return (
+                      <div
+                        key={conv.id}
+                        className="group flex items-center justify-between p-2 rounded-xl hover:bg-secondary/60 transition-colors"
+                      >
+                        <Link href={linkHref} className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{conv.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{conv.previewText}</p>
+                        </Link>
+                        <button
+                          onClick={(e) => handleDeleteConv(e, conv.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-destructive rounded-lg hover:bg-destructive/10 transition-all shrink-0 ml-1"
+                          title="Delete chat"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'contacts' && (
+            <div>
+              {filteredContacts.length === 0 ? (
+                <div className="text-center py-8 text-xs text-muted-foreground/70 space-y-2">
+                  <p>{searchQuery ? 'No contacts matching search' : 'No saved contacts yet'}</p>
+                  {!searchQuery && (
+                    <Link
+                      href="/invite"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
                     >
-                      <Link href={linkHref} className="min-w-0 flex-1">
-                        <p className="text-xs font-medium truncate">{conv.title}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{conv.previewText}</p>
+                      <UserPlus className="w-3 h-3" /> Add your first contact
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredContacts.map((c) => (
+                    <div
+                      key={c.userId}
+                      className="group flex items-center justify-between p-2 rounded-xl hover:bg-secondary/60 transition-colors"
+                    >
+                      <Link
+                        href={`/dm?id=${encodeURIComponent(c.userId)}`}
+                        className="min-w-0 flex-1"
+                      >
+                        <p className="text-xs font-medium truncate">{c.name}</p>
+                        <span className="text-[10px] text-muted-foreground font-mono truncate block">
+                          {c.userId.slice(0, 16)}...
+                        </span>
                       </Link>
                       <button
-                        onClick={(e) => handleDeleteConv(e, conv.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive rounded transition-all"
-                        title="Delete chat"
+                        onClick={(e) => handleDeleteContact(e, c.userId)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-destructive rounded-lg hover:bg-destructive/10 transition-all shrink-0 ml-1"
+                        title="Delete contact"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between px-1 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Contacts ({contacts.length})
-              </span>
-              <Link href="/invite" className="text-xs text-primary hover:underline">
-                + Add
-              </Link>
+                  ))}
+                </div>
+              )}
             </div>
-            {contacts.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 px-1 py-2">No saved contacts yet</p>
-            ) : (
-              <div className="space-y-1">
-                {contacts.map((c) => (
-                  <Link
-                    key={c.userId}
-                    href={`/dm?id=${c.userId}`}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-secondary/60 transition-colors"
-                  >
-                    <p className="text-xs font-medium">{c.name}</p>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {c.userId.slice(0, 8)}...
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 

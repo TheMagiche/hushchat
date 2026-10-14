@@ -27,21 +27,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 }) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const body = message.body as {
-    Text?: { markdown: string };
-    File?: {
-      manifest_id?: string;
-      name: string;
-      size: number;
-      mime: string;
-      data_url?: string;
-    };
-    System?: unknown;
-  };
+  const rawBody = (message.body || {}) as any;
+  const file = rawBody.File || rawBody.file;
+  const text = rawBody.Text?.markdown || rawBody.text?.markdown || rawBody.markdown || (typeof rawBody === 'string' ? rawBody : '');
 
-  const text = body?.Text?.markdown || '';
-  const file = body?.File;
-  const isImageFile = file && (file.mime?.startsWith('image/') || file.data_url?.startsWith('data:image'));
+  const fileName = file?.name || 'attachment';
+  const fileSize = file?.size || 0;
+  const fileMime = file?.mime || file?.type || '';
+  const fileDataUrl = file?.data_url || file?.dataUrl || file?.url || '';
+
+  const isImageFile =
+    Boolean(fileDataUrl) &&
+    (fileMime.startsWith('image/') ||
+      fileDataUrl.startsWith('data:image') ||
+      /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(fileName));
 
   const handleDelete = () => {
     if (confirmDelete) {
@@ -90,20 +89,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {/* File rendering */}
         {file && (
           <div className="space-y-2">
-            {isImageFile && file.data_url ? (
+            {isImageFile && fileDataUrl ? (
               <div className="space-y-1.5">
                 <img
-                  src={file.data_url}
-                  alt={file.name}
+                  src={fileDataUrl}
+                  alt={fileName}
                   loading="lazy"
                   onLoad={onMediaLoad}
                   className="max-h-72 max-w-full rounded-xl object-contain border border-black/10 bg-black/20 block"
                 />
                 <div className="flex items-center justify-between text-[11px] pt-1">
-                  <span className="truncate opacity-80">{file.name}</span>
+                  <span className="truncate opacity-80">{fileName}</span>
                   <a
-                    href={file.data_url}
-                    download={file.name}
+                    href={fileDataUrl}
+                    download={fileName}
                     className={`flex items-center gap-1 p-1 rounded-lg transition-colors ${
                       isSelf
                         ? 'hover:bg-primary-foreground/20 text-primary-foreground'
@@ -131,13 +130,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   <FileText className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{file.name}</p>
-                  <p className="text-[10px] opacity-75">{formatBytes(file.size)}</p>
+                  <p className="text-xs font-medium truncate">{fileName}</p>
+                  <p className="text-[10px] opacity-75">{formatBytes(fileSize)}</p>
                 </div>
-                {file.data_url && (
+                {fileDataUrl && (
                   <a
-                    href={file.data_url}
-                    download={file.name}
+                    href={fileDataUrl}
+                    download={fileName}
                     className={`p-2 rounded-lg transition-colors ${
                       isSelf
                         ? 'bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground'

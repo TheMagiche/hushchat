@@ -39,6 +39,16 @@ async function getPeerConstructor(): Promise<any> {
   return mod.default || mod;
 }
 
+function toUint8Array(val: any): Uint8Array {
+  if (!val) return new Uint8Array(0);
+  if (val instanceof Uint8Array) return val;
+  if (val instanceof ArrayBuffer) return new Uint8Array(val);
+  if (ArrayBuffer.isView(val)) return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+  if (Array.isArray(val)) return new Uint8Array(val);
+  if (typeof val === 'object') return new Uint8Array(Object.values(val));
+  return new Uint8Array(0);
+}
+
 export class MeshTransport {
   private peer: any = null;
   private anchorPeer: any = null;
@@ -468,13 +478,19 @@ export class MeshTransport {
 
     if (data.type === 'SealedChunk' && data.transferId && data.data && data.total !== undefined && data.index !== undefined) {
       const { transferId, index, total, data: chunkData } = data;
+      const chunkBytes = toUint8Array(chunkData);
       let entry = this.chunkedIncoming.get(transferId);
       if (!entry) {
         entry = { chunks: new Array(total), received: 0, total };
         this.chunkedIncoming.set(transferId, entry);
+        setTimeout(() => {
+          if (this.chunkedIncoming.has(transferId)) {
+            this.chunkedIncoming.delete(transferId);
+          }
+        }, 30000);
       }
       if (!entry.chunks[index]) {
-        entry.chunks[index] = chunkData;
+        entry.chunks[index] = chunkBytes;
         entry.received += 1;
       }
       if (entry.received === entry.total) {
@@ -484,7 +500,7 @@ export class MeshTransport {
         let offset = 0;
         for (const chunk of entry.chunks) {
           if (chunk) {
-            assembled.set(new Uint8Array(chunk), offset);
+            assembled.set(chunk, offset);
             offset += chunk.length;
           }
         }
@@ -494,7 +510,7 @@ export class MeshTransport {
     }
 
     if (data.type === 'Sealed' && data.ciphertext) {
-      this.processSealedCiphertext(senderPeerId, new Uint8Array(data.ciphertext));
+      this.processSealedCiphertext(senderPeerId, toUint8Array(data.ciphertext));
       return;
     }
   }
@@ -546,20 +562,19 @@ export class MeshTransport {
     }
   }
 
-  private sendSealedFrame(frame: any) {
+  private async sendSealedFrame(frame: any) {
     for (const [_, connObj] of this.connections) {
       if (connObj.session && connObj.conn?.open) {
         try {
-          const sealed = connObj.session.sealFrame(frame);
-          const rawBytes = Array.from(sealed);
-          const CHUNK_SIZE = 32768; // 32 KB chunk for reliable SCTP transport
-          if (rawBytes.length <= CHUNK_SIZE) {
-            connObj.conn.send({ type: 'Sealed', ciphertext: rawBytes });
+          const sealed: Uint8Array = connObj.session.sealFrame(frame);
+          const CHUNK_SIZE = 16384; // 16 KB chunks for reliable WebRTC data transfer
+          if (sealed.length <= CHUNK_SIZE) {
+            connObj.conn.send({ type: 'Sealed', ciphertext: sealed });
           } else {
             const transferId = `tf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            const totalChunks = Math.ceil(rawBytes.length / CHUNK_SIZE);
+            const totalChunks = Math.ceil(sealed.length / CHUNK_SIZE);
             for (let i = 0; i < totalChunks; i++) {
-              const chunkData = rawBytes.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+              const chunkData = sealed.subarray(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, sealed.length));
               connObj.conn.send({
                 type: 'SealedChunk',
                 transferId,
@@ -567,6 +582,9 @@ export class MeshTransport {
                 total: totalChunks,
                 data: chunkData,
               });
+              if (i % 6 === 0 && totalChunks > 6) {
+                await new Promise((r) => setTimeout(r, 4));
+              }
             }
           }
         } catch (e) {
