@@ -2,16 +2,37 @@ import React from 'react';
 import { MessageRecord } from '../db/schema';
 import { MarkdownRenderer } from './Markdown';
 import { formatTime } from '../lib/utils';
-import { CheckCheck, ShieldCheck } from 'lucide-react';
+import { CheckCheck, ShieldCheck, Download, FileText, Image as ImageIcon } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: MessageRecord;
   isSelf: boolean;
 }
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf }) => {
-  const body = message.body as { Text?: { markdown: string }; System?: unknown };
+  const body = message.body as {
+    Text?: { markdown: string };
+    File?: {
+      manifest_id?: string;
+      name: string;
+      size: number;
+      mime: string;
+      data_url?: string;
+    };
+    System?: unknown;
+  };
+
   const text = body?.Text?.markdown || '';
+  const file = body?.File;
+  const isImageFile = file && (file.mime?.startsWith('image/') || file.data_url?.startsWith('data:image'));
 
   return (
     <div className={`flex flex-col mb-4 ${isSelf ? 'items-end' : 'items-start'}`}>
@@ -28,13 +49,78 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSelf })
       </div>
 
       <div
-        className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm ${
+        className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm space-y-2 ${
           isSelf
             ? 'bg-primary text-primary-foreground rounded-tr-xs'
             : 'bg-card text-card-foreground border border-border rounded-tl-xs'
         }`}
       >
-        <MarkdownRenderer content={text} />
+        {/* File rendering */}
+        {file && (
+          <div className="space-y-2">
+            {isImageFile && file.data_url ? (
+              <div className="space-y-1.5">
+                <img
+                  src={file.data_url}
+                  alt={file.name}
+                  className="max-h-72 max-w-full rounded-xl object-contain border border-black/10 bg-black/20"
+                />
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <span className="truncate opacity-80">{file.name}</span>
+                  <a
+                    href={file.data_url}
+                    download={file.name}
+                    className={`flex items-center gap-1 p-1 rounded-lg transition-colors ${
+                      isSelf
+                        ? 'hover:bg-primary-foreground/20 text-primary-foreground'
+                        : 'hover:bg-secondary text-primary'
+                    }`}
+                    title="Download image"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`flex items-center gap-3 p-2.5 rounded-xl border ${
+                  isSelf
+                    ? 'bg-primary-foreground/10 border-primary-foreground/20'
+                    : 'bg-secondary/60 border-border'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                    isSelf ? 'bg-primary-foreground/20' : 'bg-primary/10 text-primary'
+                  }`}
+                >
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{file.name}</p>
+                  <p className="text-[10px] opacity-75">{formatBytes(file.size)}</p>
+                </div>
+                {file.data_url && (
+                  <a
+                    href={file.data_url}
+                    download={file.name}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isSelf
+                        ? 'bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground'
+                        : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    }`}
+                    title="Download file"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Text rendering */}
+        {text && <MarkdownRenderer content={text} />}
       </div>
 
       {isSelf && (

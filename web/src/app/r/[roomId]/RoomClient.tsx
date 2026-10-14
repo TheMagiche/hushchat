@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useChatStore } from '@/state/store';
 import { MeshTransport } from '@/chat-core/transport';
 import { MessageList } from '@/components/MessageList';
-import { Composer } from '@/components/Composer';
+import { Composer, AttachedFile } from '@/components/Composer';
 import { PeerList } from '@/components/PeerList';
 import { CallGrid } from '@/components/CallGrid';
 import {
@@ -18,6 +18,10 @@ import {
   Copy,
   Check,
   QrCode,
+  Users,
+  MoreVertical,
+  PhoneOff,
+  X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -45,17 +49,35 @@ export default function RoomClient() {
     toggleCamera,
     toggleScreen,
     initApp,
+    getWasmIdentity,
     loadHistory,
   } = useChatStore();
 
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [secretKey, setSecretKey] = useState<string | undefined>(undefined);
+  const [showPeersDrawer, setShowPeersDrawer] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const transportRef = useRef<MeshTransport | null>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     initApp();
   }, [initApp]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+        setShowMobileMenu(false);
+      }
+    };
+    if (showMobileMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMobileMenu]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hash.includes('k=')) {
@@ -71,7 +93,7 @@ export default function RoomClient() {
 
     loadHistory(`room:${roomId}`);
 
-    const wasmId = new wasm.WasmIdentity();
+    const wasmId = getWasmIdentity() || new wasm.WasmIdentity();
     const peerjsId = wasmId.generatePeerjsId();
 
     const transport = new MeshTransport(wasmId, identity.profileName, {
@@ -105,10 +127,14 @@ export default function RoomClient() {
     return () => {
       transport.close();
     };
-  }, [wasm, identity, roomId, secretKey, addMessage, addPeer, removePeer, setTyping, loadHistory]);
+  }, [wasm, identity, roomId, secretKey, addMessage, addPeer, removePeer, setTyping, loadHistory, getWasmIdentity]);
 
   const handleSendMessage = (text: string) => {
     transportRef.current?.broadcastTextMessage(`room:${roomId}`, text);
+  };
+
+  const handleSendFile = (file: AttachedFile) => {
+    transportRef.current?.broadcastFileMessage(`room:${roomId}`, file);
   };
 
   const handleTyping = (isTyping: boolean) => {
@@ -142,34 +168,35 @@ export default function RoomClient() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
       {/* Top Navbar */}
-      <div className="p-3 bg-card border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="p-3 bg-card border-b border-border flex items-center justify-between relative z-30">
+        <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href="/"
-            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <h2 className="font-semibold text-sm">#{roomId}</h2>
+              <h2 className="font-semibold text-sm truncate">#{roomId}</h2>
               {secretKey ? (
-                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">
-                  <Lock className="w-3 h-3" /> Secret Keyed
+                <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">
+                  <Lock className="w-3 h-3" /> Secret
                 </span>
               ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-                  Public Room
+                <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                  Public
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              {peers.size + 1} connected peer{peers.size !== 0 ? 's' : ''} • Ephemeral mesh
+            <p className="text-[10px] text-muted-foreground truncate">
+              {peers.size + 1} connected • Ephemeral mesh
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Desktop actions (> md) */}
+        <div className="hidden md:flex items-center gap-2">
           {!callActive ? (
             <button
               onClick={startCall}
@@ -177,7 +204,14 @@ export default function RoomClient() {
             >
               <Phone className="w-3.5 h-3.5 text-emerald-400" /> Start Call
             </button>
-          ) : null}
+          ) : (
+            <button
+              onClick={hangupCall}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs font-medium transition-colors border border-destructive/20"
+            >
+              <PhoneOff className="w-3.5 h-3.5" /> End Call
+            </button>
+          )}
 
           <button
             onClick={() => setShowQR(!showQR)}
@@ -194,6 +228,90 @@ export default function RoomClient() {
             {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
             {copiedLink ? 'Copied' : 'Share Link'}
           </button>
+        </div>
+
+        {/* Mobile controls (<= md): Peer Drawer Button & Dropdown Menu */}
+        <div className="flex md:hidden items-center gap-1.5">
+          <button
+            onClick={() => setShowPeersDrawer(!showPeersDrawer)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-secondary text-foreground text-xs font-medium border border-border"
+            title="Toggle connected peers"
+          >
+            <Users className="w-3.5 h-3.5 text-primary" />
+            <span>{peers.size + 1}</span>
+          </button>
+
+          <div className="relative" ref={mobileMenuRef}>
+            <button
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              className="p-2 text-muted-foreground hover:text-foreground rounded-xl hover:bg-secondary border border-border transition-colors"
+              title="More actions"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+
+            {/* Mobile Dropdown Menu */}
+            {showMobileMenu && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-popover border border-border rounded-2xl shadow-2xl p-1.5 z-50 flex flex-col gap-1">
+                {!callActive ? (
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      startCall();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-secondary rounded-xl transition-colors text-left"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-emerald-400" /> Start Call
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      hangupCall();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded-xl transition-colors text-left"
+                  >
+                    <PhoneOff className="w-3.5 h-3.5" /> End Call
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowQR(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-secondary rounded-xl transition-colors text-left"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-primary" /> Show QR Code
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    copyRoomLink();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-secondary rounded-xl transition-colors text-left"
+                >
+                  {copiedLink ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Share2 className="w-3.5 h-3.5 text-primary" />
+                  )}
+                  {copiedLink ? 'Link Copied!' : 'Share Room Link'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowPeersDrawer(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-secondary rounded-xl transition-colors text-left"
+                >
+                  <Users className="w-3.5 h-3.5 text-primary" /> Peers ({peers.size + 1})
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -233,8 +351,8 @@ export default function RoomClient() {
       )}
 
       {/* Main Chat and Peers Body */}
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col h-full bg-background/50">
+      <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 flex flex-col h-full bg-background/50 overflow-hidden">
           <MessageList messages={messages} currentUserId={identity?.userId || ''} />
 
           {typingUsers.size > 0 && (
@@ -243,10 +361,34 @@ export default function RoomClient() {
             </div>
           )}
 
-          <Composer onSendMessage={handleSendMessage} onTyping={handleTyping} />
+          <Composer
+            onSendMessage={handleSendMessage}
+            onSendFile={handleSendFile}
+            onTyping={handleTyping}
+          />
         </div>
 
-        <PeerList peers={Array.from(peers.values())} myUserId={identity?.userId || ''} />
+        {/* Desktop Peer list Sidebar (>= md) */}
+        <div className="hidden md:block w-64 border-l border-border h-full shrink-0">
+          <PeerList peers={Array.from(peers.values())} myUserId={identity?.userId || ''} />
+        </div>
+
+        {/* Mobile Peer list Drawer (< md) */}
+        {showPeersDrawer && (
+          <>
+            <div
+              className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-xs transition-opacity"
+              onClick={() => setShowPeersDrawer(false)}
+            />
+            <div className="fixed inset-y-0 right-0 z-50 w-72 max-w-[85vw] bg-card border-l border-border shadow-2xl md:hidden transition-transform animate-in slide-in-from-right duration-200">
+              <PeerList
+                peers={Array.from(peers.values())}
+                myUserId={identity?.userId || ''}
+                onClose={() => setShowPeersDrawer(false)}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

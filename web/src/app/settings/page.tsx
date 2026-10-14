@@ -101,6 +101,7 @@ export default function SettingsPage() {
               <label className="text-xs text-muted-foreground mb-1 block">Display Name</label>
               <input
                 type="text"
+                placeholder="Type here..."
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
@@ -158,7 +159,7 @@ export default function SettingsPage() {
             <label className="text-xs text-muted-foreground mb-1 block">Backup Passphrase</label>
             <input
               type="password"
-              placeholder="Enter strong passphrase..."
+              placeholder="Type here..."
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
               className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"

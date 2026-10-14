@@ -62,6 +62,16 @@ impl WasmIdentity {
         self.inner.x25519_pub().to_vec()
     }
 
+    #[wasm_bindgen(js_name = ed25519Secret)]
+    pub fn ed25519_secret(&self) -> Vec<u8> {
+        self.inner.signing_key().to_bytes().to_vec()
+    }
+
+    #[wasm_bindgen(js_name = x25519Secret)]
+    pub fn x25519_secret(&self) -> Vec<u8> {
+        self.inner.x25519_secret().to_bytes().to_vec()
+    }
+
     #[wasm_bindgen(js_name = exportEncrypted)]
     pub fn export_encrypted(&self, passphrase: &str) -> Result<Vec<u8>, JsValue> {
         self.inner

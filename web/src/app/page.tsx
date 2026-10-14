@@ -192,7 +192,7 @@ export default function HomePage() {
               <form onSubmit={handleCreatePublicRoom} className="space-y-2">
                 <input
                   type="text"
-                  placeholder="e.g. general, rust-dev"
+                  placeholder="Type here..."
                   value={roomName}
                   onChange={(e) => setRoomName(e.target.value)}
                   className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-primary"

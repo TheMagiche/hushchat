@@ -21,7 +21,13 @@ pub enum Body {
     Reaction { target: String, emoji: String },
     Edit { target: String, markdown: String },
     Delete { target: String },
-    File { manifest_id: String },
+    File {
+        manifest_id: String,
+        name: String,
+        size: u64,
+        mime: String,
+        data_url: Option<String>,
+    },
     System(SystemEvent),
 }
 
@@ -103,8 +109,8 @@ pub enum Frame {
     Pong,
 }
 
-pub const MAX_TEXT_LEN: usize = 10_000;
-pub const MAX_FRAME_LEN: usize = 65_536; // 64 KiB
+pub const MAX_TEXT_LEN: usize = 10_000_000;
+pub const MAX_FRAME_LEN: usize = 16_777_216; // 16 MiB
 
 /// Canonical bytes representation for signing a ChatMessage
 pub fn canonical_message_bytes(
@@ -158,6 +164,13 @@ pub fn create_chat_message(
     if let Body::Edit { ref markdown, .. } = body {
         if markdown.len() > MAX_TEXT_LEN {
             return Err(PeerChatError::TextTooLong(markdown.len()));
+        }
+    }
+    if let Body::File { ref data_url, .. } = body {
+        if let Some(ref url) = data_url {
+            if url.len() > MAX_TEXT_LEN {
+                return Err(PeerChatError::TextTooLong(url.len()));
+            }
         }
     }
 

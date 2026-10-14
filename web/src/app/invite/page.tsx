@@ -94,7 +94,7 @@ export default function InvitePage() {
               <label className="text-xs text-muted-foreground mb-1 block">Contact's PeerChat User ID</label>
               <input
                 type="text"
-                placeholder="pc-..."
+                placeholder="Type here..."
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono"
@@ -105,7 +105,7 @@ export default function InvitePage() {
               <label className="text-xs text-muted-foreground mb-1 block">Nickname (Optional)</label>
               <input
                 type="text"
-                placeholder="Alice"
+                placeholder="Type here..."
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
