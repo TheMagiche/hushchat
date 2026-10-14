@@ -12,6 +12,13 @@ export interface PeerItem {
   verified?: boolean;
 }
 
+export interface IncomingCallInfo {
+  callerPeerId: string;
+  callerUserId?: string;
+  callerName?: string;
+  mediaConn?: any;
+}
+
 export interface ChatStoreState {
   wasm: WasmModule | null;
   wasmIdentity: WasmIdentity | null;
@@ -25,6 +32,7 @@ export interface ChatStoreState {
   conversations: ConversationRecord[];
   typingUsers: Set<string>;
   callActive: boolean;
+  incomingCall: IncomingCallInfo | null;
   localStream: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
   micEnabled: boolean;
@@ -41,6 +49,7 @@ export interface ChatStoreState {
   addPeer: (peer: PeerItem) => void;
   removePeer: (userId: string) => void;
   setTyping: (userId: string, isTyping: boolean) => void;
+  setIncomingCall: (call: IncomingCallInfo | null) => void;
   loadHistory: (convId: string) => Promise<void>;
   addContact: (contact: ContactRecord) => Promise<void>;
   toggleMic: () => void;
@@ -61,6 +70,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   conversations: [],
   typingUsers: new Set(),
   callActive: false,
+  incomingCall: null,
   localStream: null,
   remoteStreams: new Map(),
   micEnabled: true,
@@ -222,6 +232,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     if (isTyping) typingUsers.add(userId);
     else typingUsers.delete(userId);
     set({ typingUsers });
+  },
+
+  setIncomingCall: (call: IncomingCallInfo | null) => {
+    set({ incomingCall: call });
   },
 
   loadHistory: async (convId: string) => {

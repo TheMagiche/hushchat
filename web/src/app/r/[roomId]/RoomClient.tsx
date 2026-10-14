@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useChatStore } from '@/state/store';
+import { useChatStore, IncomingCallInfo } from '@/state/store';
 import { MeshTransport } from '@/chat-core/transport';
 import { MessageList } from '@/components/MessageList';
 import { Composer, AttachedFile } from '@/components/Composer';
@@ -22,6 +22,7 @@ import {
   MoreVertical,
   PhoneOff,
   X,
+  PhoneIncoming,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -37,6 +38,7 @@ export default function RoomClient() {
     peers,
     typingUsers,
     callActive,
+    incomingCall,
     localStream,
     remoteStreams,
     micEnabled,
@@ -45,6 +47,7 @@ export default function RoomClient() {
     addPeer,
     removePeer,
     setTyping,
+    setIncomingCall,
     toggleMic,
     toggleCamera,
     toggleScreen,
@@ -116,6 +119,12 @@ export default function RoomClient() {
           return { remoteStreams: next };
         });
       },
+      onIncomingCall: (callerPeerId, callerUserId, callerName, mediaConn) => {
+        setIncomingCall({ callerPeerId, callerUserId, callerName, mediaConn });
+      },
+      onCallEnded: () => {
+        setIncomingCall(null);
+      },
     });
 
     transportRef.current = transport;
@@ -127,7 +136,7 @@ export default function RoomClient() {
     return () => {
       transport.close();
     };
-  }, [wasm, identity, roomId, secretKey, addMessage, addPeer, removePeer, setTyping, loadHistory, getWasmIdentity]);
+  }, [wasm, identity, roomId, secretKey, addMessage, addPeer, removePeer, setTyping, setIncomingCall, loadHistory, getWasmIdentity]);
 
   const handleSendMessage = (text: string) => {
     transportRef.current?.broadcastTextMessage(`room:${roomId}`, text);
@@ -144,19 +153,36 @@ export default function RoomClient() {
   const startCall = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      useChatStore.setState({ callActive: true, localStream: stream });
-
-      for (const peer of peers.values()) {
-        transportRef.current?.callPeer(peer.peerjsId, stream);
-      }
+      useChatStore.setState({ callActive: true, localStream: stream, incomingCall: null });
+      transportRef.current?.callAllPeers(stream);
     } catch (err) {
       console.warn('Failed to start call:', err);
     }
   };
 
+  const handleAcceptCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      useChatStore.setState({ callActive: true, localStream: stream, incomingCall: null });
+      transportRef.current?.callAllPeers(stream);
+    } catch (err) {
+      console.warn('Failed to answer call:', err);
+    }
+  };
+
+  const handleDismissCall = () => {
+    setIncomingCall(null);
+  };
+
   const hangupCall = () => {
     localStream?.getTracks().forEach((t) => t.stop());
-    useChatStore.setState({ callActive: false, localStream: null, remoteStreams: new Map() });
+    transportRef.current?.broadcastCallState(false);
+    useChatStore.setState({
+      callActive: false,
+      localStream: null,
+      remoteStreams: new Map(),
+      incomingCall: null,
+    });
   };
 
   const copyRoomLink = () => {
@@ -168,7 +194,7 @@ export default function RoomClient() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
       {/* Top Navbar */}
-      <div className="p-3 bg-card border-b border-border flex items-center justify-between relative z-30">
+      <div className="shrink-0 p-3 bg-card border-b border-border flex items-center justify-between relative z-30">
         <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href="/"
@@ -315,18 +341,53 @@ export default function RoomClient() {
         </div>
       </div>
 
+      {/* Incoming Call Notification Banner */}
+      {incomingCall && !callActive && (
+        <div className="shrink-0 bg-primary/10 border-b border-primary/20 p-3 px-4 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-top duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center animate-pulse">
+              <PhoneIncoming className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-foreground">
+                {incomingCall.callerName || 'Room occupant'} started a call
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Other occupants in #{roomId} are invited to join audio/video
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={handleAcceptCall}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium shadow-sm transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" /> Join Call
+            </button>
+            <button
+              onClick={handleDismissCall}
+              className="flex-1 sm:flex-none px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium border border-border transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Video Call grid if active */}
       {callActive && (
-        <CallGrid
-          localStream={localStream}
-          remoteStreams={remoteStreams}
-          micEnabled={micEnabled}
-          cameraEnabled={cameraEnabled}
-          onToggleMic={toggleMic}
-          onToggleCamera={toggleCamera}
-          onToggleScreen={toggleScreen}
-          onHangup={hangupCall}
-        />
+        <div className="shrink-0">
+          <CallGrid
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            micEnabled={micEnabled}
+            cameraEnabled={cameraEnabled}
+            onToggleMic={toggleMic}
+            onToggleCamera={toggleCamera}
+            onToggleScreen={toggleScreen}
+            onHangup={hangupCall}
+          />
+        </div>
       )}
 
       {/* QR Code Modal Overlay */}
@@ -350,22 +411,28 @@ export default function RoomClient() {
         </div>
       )}
 
-      {/* Main Chat and Peers Body */}
-      <div className="flex-1 flex overflow-hidden relative">
-        <div className="flex-1 flex flex-col h-full bg-background/50 overflow-hidden">
-          <MessageList messages={messages} currentUserId={identity?.userId || ''} />
+      {/* Main Chat and Peers Body: Full height pinned chat area */}
+      <div className="flex-1 min-h-0 flex overflow-hidden relative">
+        <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
+          {/* Scrollable messages occupying full area */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <MessageList messages={messages} currentUserId={identity?.userId || ''} />
+          </div>
 
           {typingUsers.size > 0 && (
-            <div className="px-4 py-1 text-[11px] text-muted-foreground animate-pulse">
+            <div className="shrink-0 px-4 py-1 text-[11px] text-muted-foreground animate-pulse">
               {Array.from(typingUsers).join(', ').slice(0, 20)} is typing...
             </div>
           )}
 
-          <Composer
-            onSendMessage={handleSendMessage}
-            onSendFile={handleSendFile}
-            onTyping={handleTyping}
-          />
+          {/* Pin Composer at bottom */}
+          <div className="shrink-0 w-full">
+            <Composer
+              onSendMessage={handleSendMessage}
+              onSendFile={handleSendFile}
+              onTyping={handleTyping}
+            />
+          </div>
         </div>
 
         {/* Desktop Peer list Sidebar (>= md) */}

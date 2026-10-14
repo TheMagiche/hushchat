@@ -17,6 +17,7 @@ import {
   UserCheck,
   MoreVertical,
   Shield,
+  PhoneIncoming,
 } from 'lucide-react';
 
 export default function DMClient() {
@@ -32,6 +33,7 @@ export default function DMClient() {
     peers,
     typingUsers,
     callActive,
+    incomingCall,
     localStream,
     remoteStreams,
     micEnabled,
@@ -40,6 +42,7 @@ export default function DMClient() {
     addPeer,
     removePeer,
     setTyping,
+    setIncomingCall,
     initApp,
     getWasmIdentity,
     loadHistory,
@@ -121,6 +124,12 @@ export default function DMClient() {
           return { remoteStreams: next };
         });
       },
+      onIncomingCall: (callerPeerId, callerUserId, callerName, mediaConn) => {
+        setIncomingCall({ callerPeerId, callerUserId, callerName, mediaConn });
+      },
+      onCallEnded: () => {
+        setIncomingCall(null);
+      },
     });
 
     transportRef.current = transport;
@@ -134,7 +143,7 @@ export default function DMClient() {
     return () => {
       transport.close();
     };
-  }, [wasm, identity, targetUserId, contact, addMessage, addPeer, removePeer, setTyping, loadHistory, getWasmIdentity]);
+  }, [wasm, identity, targetUserId, contact, addMessage, addPeer, removePeer, setTyping, setIncomingCall, loadHistory, getWasmIdentity]);
 
   const handleSendMessage = (text: string) => {
     transportRef.current?.broadcastTextMessage(`dm:${targetUserId}`, text);
@@ -150,7 +159,6 @@ export default function DMClient() {
 
   const toggleVerification = async () => {
     if (!contact) {
-      // create contact and mark verified
       await addContact({
         userId: targetUserId,
         name: `Peer-${targetUserId.slice(-4)}`,
@@ -172,19 +180,36 @@ export default function DMClient() {
   const startCall = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      useChatStore.setState({ callActive: true, localStream: stream });
-
-      for (const peer of peers.values()) {
-        transportRef.current?.callPeer(peer.peerjsId, stream);
-      }
+      useChatStore.setState({ callActive: true, localStream: stream, incomingCall: null });
+      transportRef.current?.callAllPeers(stream);
     } catch (err) {
       console.warn('Failed to start call:', err);
     }
   };
 
+  const handleAcceptCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      useChatStore.setState({ callActive: true, localStream: stream, incomingCall: null });
+      transportRef.current?.callAllPeers(stream);
+    } catch (err) {
+      console.warn('Failed to answer call:', err);
+    }
+  };
+
+  const handleDismissCall = () => {
+    setIncomingCall(null);
+  };
+
   const hangupCall = () => {
     localStream?.getTracks().forEach((t) => t.stop());
-    useChatStore.setState({ callActive: false, localStream: null, remoteStreams: new Map() });
+    transportRef.current?.broadcastCallState(false);
+    useChatStore.setState({
+      callActive: false,
+      localStream: null,
+      remoteStreams: new Map(),
+      incomingCall: null,
+    });
   };
 
   const isPeerOnline = peers.has(targetUserId) || peers.size > 0;
@@ -192,7 +217,7 @@ export default function DMClient() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
       {/* Top Navbar */}
-      <div className="p-3 bg-card border-b border-border flex items-center justify-between relative z-30">
+      <div className="shrink-0 p-3 bg-card border-b border-border flex items-center justify-between relative z-30">
         <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href="/"
@@ -303,41 +328,82 @@ export default function DMClient() {
 
       {/* Safety number banner */}
       {safetyNumber && (
-        <div className="p-2.5 bg-secondary/30 border-b border-border text-center text-xs">
+        <div className="shrink-0 p-2.5 bg-secondary/30 border-b border-border text-center text-xs">
           <span className="text-muted-foreground mr-2 font-medium">Safety Number:</span>
           <span className="font-mono text-primary font-semibold tracking-wider">{safetyNumber}</span>
         </div>
       )}
 
-      {/* Video Call grid if active */}
-      {callActive && (
-        <CallGrid
-          localStream={localStream}
-          remoteStreams={remoteStreams}
-          micEnabled={micEnabled}
-          cameraEnabled={cameraEnabled}
-          onToggleMic={toggleMic}
-          onToggleCamera={toggleCamera}
-          onToggleScreen={toggleScreen}
-          onHangup={hangupCall}
-        />
+      {/* Incoming Call Notification Banner */}
+      {incomingCall && !callActive && (
+        <div className="shrink-0 bg-primary/10 border-b border-primary/20 p-3 px-4 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-top duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center animate-pulse">
+              <PhoneIncoming className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-foreground">
+                {incomingCall.callerName || contact?.name || 'Contact'} is calling you
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Encrypted peer-to-peer audio and video call
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={handleAcceptCall}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium shadow-sm transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" /> Answer
+            </button>
+            <button
+              onClick={handleDismissCall}
+              className="flex-1 sm:flex-none px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium border border-border transition-colors"
+            >
+              Decline
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* Message and Composer Area */}
-      <div className="flex-1 flex flex-col h-full bg-background/50 overflow-hidden">
-        <MessageList messages={messages} currentUserId={identity?.userId || ''} />
+      {/* Video Call grid if active */}
+      {callActive && (
+        <div className="shrink-0">
+          <CallGrid
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            micEnabled={micEnabled}
+            cameraEnabled={cameraEnabled}
+            onToggleMic={toggleMic}
+            onToggleCamera={toggleCamera}
+            onToggleScreen={toggleScreen}
+            onHangup={hangupCall}
+          />
+        </div>
+      )}
+
+      {/* Message and Composer Area: Full page up to pinned bottom input */}
+      <div className="flex-1 min-h-0 flex flex-col bg-background/50 overflow-hidden">
+        {/* Scrollable messages container */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <MessageList messages={messages} currentUserId={identity?.userId || ''} />
+        </div>
 
         {typingUsers.size > 0 && (
-          <div className="px-4 py-1 text-[11px] text-muted-foreground animate-pulse">
+          <div className="shrink-0 px-4 py-1 text-[11px] text-muted-foreground animate-pulse">
             Contact is typing...
           </div>
         )}
 
-        <Composer
-          onSendMessage={handleSendMessage}
-          onSendFile={handleSendFile}
-          onTyping={handleTyping}
-        />
+        {/* Pin Composer at bottom */}
+        <div className="shrink-0 w-full">
+          <Composer
+            onSendMessage={handleSendMessage}
+            onSendFile={handleSendFile}
+            onTyping={handleTyping}
+          />
+        </div>
       </div>
     </div>
   );

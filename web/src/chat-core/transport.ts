@@ -1,4 +1,4 @@
-import Peer, { DataConnection, MediaConnection } from 'peerjs';
+import type { DataConnection, MediaConnection } from 'peerjs';
 import { WasmSession, WasmIdentity } from '../wasm/pkg/peerchat_wasm';
 import { useChatStore, PeerItem } from '../state/store';
 import { MessageRecord } from '../db/schema';
@@ -9,6 +9,8 @@ export interface TransportEvents {
   onPeerLeave?: (userId: string) => void;
   onTyping?: (userId: string, isTyping: boolean) => void;
   onStream?: (peerId: string, stream: MediaStream) => void;
+  onIncomingCall?: (callerPeerId: string, callerUserId?: string, callerName?: string, mediaConn?: any) => void;
+  onCallEnded?: () => void;
 }
 
 interface ConnectionEntry {
@@ -24,14 +26,29 @@ interface AnchorMember {
   name: string;
 }
 
+async function getPeerConstructor(): Promise<any> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const mod: any = await import('peerjs');
+  if (typeof mod === 'function') return mod;
+  if (typeof mod.default === 'function') return mod.default;
+  if (typeof mod.Peer === 'function') return mod.Peer;
+  if (typeof mod.default?.default === 'function') return mod.default.default;
+  if (typeof mod.default?.Peer === 'function') return mod.default.Peer;
+  return mod.default || mod;
+}
+
 export class MeshTransport {
-  private peer: Peer | null = null;
-  private anchorPeer: Peer | null = null;
+  private peer: any = null;
+  private anchorPeer: any = null;
   private anchorConn: DataConnection | null = null;
   private anchorMembers: Map<string, AnchorMember> = new Map();
   private anchorConns: Set<DataConnection> = new Set();
   private connections: Map<string, ConnectionEntry> = new Map();
   private calls: Map<string, MediaConnection> = new Map();
+  private pendingIncomingCalls: Map<string, any> = new Map();
+  private chunkedIncoming: Map<string, { chunks: (number[] | Uint8Array)[]; received: number; total: number }> = new Map();
   private currentRoomId: string | null = null;
   private roomKeyBytes: Uint8Array | null = null;
   private lamportClock = 0;
@@ -45,8 +62,12 @@ export class MeshTransport {
   ) {}
 
   public async init(peerjsId: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const p = new Peer(peerjsId, {
+    if (typeof window === 'undefined') return '';
+    const PeerClass = await getPeerConstructor();
+    if (!PeerClass) return '';
+
+    return new Promise((resolve) => {
+      const p: any = new PeerClass(peerjsId, {
         host: process.env.NEXT_PUBLIC_PEER_HOST || '0.peerjs.com',
         port: Number(process.env.NEXT_PUBLIC_PEER_PORT) || 443,
         path: process.env.NEXT_PUBLIC_PEER_PATH || '/',
@@ -59,13 +80,13 @@ export class MeshTransport {
         },
       });
 
-      p.on('open', (id) => {
+      p.on('open', (id: string) => {
         this.peer = p;
         this.setupIncomingHandlers();
         resolve(id);
       });
 
-      p.on('error', (err) => {
+      p.on('error', (err: any) => {
         console.warn('PeerJS main instance error:', err);
       });
     });
@@ -91,10 +112,13 @@ export class MeshTransport {
     this.tryClaimAnchor(anchorId);
   }
 
-  private tryClaimAnchor(anchorId: string) {
-    if (this.isDestroyed || !this.peer) return;
+  private async tryClaimAnchor(anchorId: string) {
+    if (this.isDestroyed || !this.peer || typeof window === 'undefined') return;
 
-    const anchor = new Peer(anchorId, {
+    const PeerClass = await getPeerConstructor();
+    if (!PeerClass) return;
+
+    const anchor: any = new PeerClass(anchorId, {
       host: process.env.NEXT_PUBLIC_PEER_HOST || '0.peerjs.com',
       port: Number(process.env.NEXT_PUBLIC_PEER_PORT) || 443,
       path: process.env.NEXT_PUBLIC_PEER_PATH || '/',
@@ -118,7 +142,7 @@ export class MeshTransport {
       this.setupAnchorHandlers(anchor);
     });
 
-    anchor.on('error', (_err) => {
+    anchor.on('error', (_err: any) => {
       // Anchor ID taken -> another peer is anchor; connect as regular room member
       if (this.isDestroyed) return;
       this.isAnchor = false;
@@ -126,8 +150,8 @@ export class MeshTransport {
     });
   }
 
-  private setupAnchorHandlers(anchor: Peer) {
-    anchor.on('connection', (conn) => {
+  private setupAnchorHandlers(anchor: any) {
+    anchor.on('connection', (conn: DataConnection) => {
       this.anchorConns.add(conn);
 
       conn.on('data', (raw: any) => {
@@ -219,7 +243,6 @@ export class MeshTransport {
 
     anchorConn.on('close', () => {
       this.anchorConn = null;
-      // If anchor disconnected and room is still active, try to claim anchor position
       if (!this.isDestroyed && this.currentRoomId) {
         setTimeout(() => {
           if (!this.isDestroyed && this.currentRoomId) {
@@ -239,7 +262,6 @@ export class MeshTransport {
     this.connections.set(targetPeerId, { conn, name: expectedName });
 
     conn.on('open', () => {
-      // Initiator begins cryptographic Triple-DH handshake
       const wasm = useChatStore.getState().wasm;
       if (wasm) {
         try {
@@ -260,7 +282,7 @@ export class MeshTransport {
       }
     });
 
-    conn.on('data', (data) => {
+    conn.on('data', (data: any) => {
       this.handleIncomingData(targetPeerId, data, conn);
     });
 
@@ -268,7 +290,7 @@ export class MeshTransport {
       this.handlePeerDisconnect(targetPeerId);
     });
 
-    conn.on('error', (err) => {
+    conn.on('error', (err: any) => {
       console.warn('Connection error with peer', targetPeerId, err);
       this.handlePeerDisconnect(targetPeerId);
     });
@@ -277,12 +299,12 @@ export class MeshTransport {
   private setupIncomingHandlers() {
     if (!this.peer) return;
 
-    this.peer.on('connection', (conn) => {
+    this.peer.on('connection', (conn: any) => {
       if (!this.connections.has(conn.peer)) {
         this.connections.set(conn.peer, { conn });
       }
 
-      conn.on('data', (data) => {
+      conn.on('data', (data: any) => {
         this.handleIncomingData(conn.peer, data, conn);
       });
 
@@ -290,29 +312,44 @@ export class MeshTransport {
         this.handlePeerDisconnect(conn.peer);
       });
 
-      conn.on('error', (err) => {
+      conn.on('error', (err: any) => {
         console.warn('Incoming peer connection error:', err);
         this.handlePeerDisconnect(conn.peer);
       });
     });
 
-    this.peer.on('call', (mediaConn) => {
+    this.peer.on('call', (mediaConn: any) => {
       const localStream = useChatStore.getState().localStream;
-      if (localStream) {
+      const connObj = this.connections.get(mediaConn.peer);
+      const callerName = connObj?.name || `Peer-${mediaConn.peer.slice(-4)}`;
+      const callerUserId = connObj?.userId;
+
+      this.pendingIncomingCalls.set(mediaConn.peer, mediaConn);
+
+      if (localStream && useChatStore.getState().callActive) {
         mediaConn.answer(localStream);
+        this.calls.set(mediaConn.peer, mediaConn);
+
+        mediaConn.on('stream', (remoteStream: MediaStream) => {
+          this.events.onStream?.(mediaConn.peer, remoteStream);
+        });
+
+        mediaConn.on('close', () => {
+          this.calls.delete(mediaConn.peer);
+        });
       } else {
-        mediaConn.answer();
+        // Occupant is not yet in call -> notify with incoming call banner
+        this.events.onIncomingCall?.(mediaConn.peer, callerUserId, callerName, mediaConn);
+
+        mediaConn.on('stream', (remoteStream: MediaStream) => {
+          this.events.onStream?.(mediaConn.peer, remoteStream);
+        });
+
+        mediaConn.on('close', () => {
+          this.pendingIncomingCalls.delete(mediaConn.peer);
+          this.calls.delete(mediaConn.peer);
+        });
       }
-
-      this.calls.set(mediaConn.peer, mediaConn);
-
-      mediaConn.on('stream', (remoteStream) => {
-        this.events.onStream?.(mediaConn.peer, remoteStream);
-      });
-
-      mediaConn.on('close', () => {
-        this.calls.delete(mediaConn.peer);
-      });
     });
   }
 
@@ -323,15 +360,37 @@ export class MeshTransport {
       statePtr?: number;
       origStatePtr?: number;
       profile?: { name?: string };
-      ciphertext?: number[];
+      ciphertext?: number[] | Uint8Array;
+      transferId?: string;
+      index?: number;
+      total?: number;
+      data?: number[] | Uint8Array;
+      callerUserId?: string;
+      callerName?: string;
+      callerPeerId?: string;
     };
 
     const wasm = useChatStore.getState().wasm;
     if (!wasm) return;
 
+    if (data.type === 'CallOffer') {
+      const connObj = this.connections.get(senderPeerId);
+      const callerName = data.callerName || connObj?.name || `Peer-${senderPeerId.slice(-4)}`;
+      const callerUserId = data.callerUserId || connObj?.userId;
+      const mediaConn = this.pendingIncomingCalls.get(senderPeerId);
+      if (!useChatStore.getState().callActive) {
+        this.events.onIncomingCall?.(senderPeerId, callerUserId, callerName, mediaConn);
+      }
+      return;
+    }
+
+    if (data.type === 'CallEnd') {
+      this.events.onCallEnded?.();
+      return;
+    }
+
     if (data.type === 'Hello' && data.hello) {
       if (data.statePtr !== undefined) {
-        // Responder side
         try {
           const resp = wasm.WasmSession.respondHandshake(
             this.wasmIdentity,
@@ -407,46 +466,138 @@ export class MeshTransport {
       return;
     }
 
+    if (data.type === 'SealedChunk' && data.transferId && data.data && data.total !== undefined && data.index !== undefined) {
+      const { transferId, index, total, data: chunkData } = data;
+      let entry = this.chunkedIncoming.get(transferId);
+      if (!entry) {
+        entry = { chunks: new Array(total), received: 0, total };
+        this.chunkedIncoming.set(transferId, entry);
+      }
+      if (!entry.chunks[index]) {
+        entry.chunks[index] = chunkData;
+        entry.received += 1;
+      }
+      if (entry.received === entry.total) {
+        this.chunkedIncoming.delete(transferId);
+        const fullLength = entry.chunks.reduce((acc, c) => acc + (c?.length || 0), 0);
+        const assembled = new Uint8Array(fullLength);
+        let offset = 0;
+        for (const chunk of entry.chunks) {
+          if (chunk) {
+            assembled.set(new Uint8Array(chunk), offset);
+            offset += chunk.length;
+          }
+        }
+        this.processSealedCiphertext(senderPeerId, assembled);
+      }
+      return;
+    }
+
     if (data.type === 'Sealed' && data.ciphertext) {
-      const connObj = this.connections.get(senderPeerId);
-      if (!connObj?.session) return;
+      this.processSealedCiphertext(senderPeerId, new Uint8Array(data.ciphertext));
+      return;
+    }
+  }
 
-      try {
-        const frame = connObj.session.openFrame(new Uint8Array(data.ciphertext)) as {
-          Msg?: {
-            id: string;
-            conversation: string;
-            author: string;
-            lamport: number;
-            sent_at_ms: number;
-            body: unknown;
-            sig: number[];
-          };
-          Typing?: boolean;
+  private processSealedCiphertext(senderPeerId: string, ciphertext: Uint8Array) {
+    const connObj = this.connections.get(senderPeerId);
+    if (!connObj?.session) return;
+
+    try {
+      const frame = connObj.session.openFrame(ciphertext) as {
+        Msg?: {
+          id: string;
+          conversation: string;
+          author: string;
+          lamport: number;
+          sent_at_ms: number;
+          body: unknown;
+          sig: number[];
         };
+        Typing?: boolean;
+      };
 
-        if (frame.Msg) {
-          this.lamportClock = Math.max(this.lamportClock, frame.Msg.lamport) + 1;
-          const msgRecord: MessageRecord = {
-            id: frame.Msg.id,
-            conversation: frame.Msg.conversation,
-            author: frame.Msg.author,
-            lamport: frame.Msg.lamport,
-            sentAtMs: frame.Msg.sent_at_ms,
-            body: frame.Msg.body,
-            sig: new Uint8Array(frame.Msg.sig),
-            isDelivered: true,
-          };
-          this.events.onMessage?.(msgRecord);
-        }
+      if (frame.Msg) {
+        this.lamportClock = Math.max(this.lamportClock, frame.Msg.lamport) + 1;
+        const msgRecord: MessageRecord = {
+          id: frame.Msg.id,
+          conversation: frame.Msg.conversation,
+          author: frame.Msg.author,
+          lamport: frame.Msg.lamport,
+          sentAtMs: frame.Msg.sent_at_ms,
+          body: frame.Msg.body,
+          sig: new Uint8Array(frame.Msg.sig),
+          isDelivered: true,
+        };
+        this.events.onMessage?.(msgRecord);
+      }
 
-        if (frame.Typing !== undefined) {
-          this.events.onTyping?.(connObj.userId || connObj.session.remoteUserId(), frame.Typing);
+      if (frame.Typing !== undefined) {
+        this.events.onTyping?.(connObj.userId || connObj.session.remoteUserId(), frame.Typing);
+      }
+    } catch (err) {
+      console.warn('Failed to decrypt incoming frame:', err);
+    }
+  }
+
+  private sendSealedFrame(frame: any) {
+    for (const [_, connObj] of this.connections) {
+      if (connObj.session && connObj.conn?.open) {
+        try {
+          const sealed = connObj.session.sealFrame(frame);
+          const rawBytes = Array.from(sealed);
+          const CHUNK_SIZE = 32768; // 32 KB chunk for reliable SCTP transport
+          if (rawBytes.length <= CHUNK_SIZE) {
+            connObj.conn.send({ type: 'Sealed', ciphertext: rawBytes });
+          } else {
+            const transferId = `tf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const totalChunks = Math.ceil(rawBytes.length / CHUNK_SIZE);
+            for (let i = 0; i < totalChunks; i++) {
+              const chunkData = rawBytes.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+              connObj.conn.send({
+                type: 'SealedChunk',
+                transferId,
+                index: i,
+                total: totalChunks,
+                data: chunkData,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to seal frame for peer:', e);
         }
-      } catch (err) {
-        console.warn('Failed to decrypt incoming frame:', err);
       }
     }
+  }
+
+  public broadcastCallState(active: boolean) {
+    for (const [_, connObj] of this.connections) {
+      if (connObj.conn?.open) {
+        connObj.conn.send({
+          type: active ? 'CallOffer' : 'CallEnd',
+          callerUserId: this.wasmIdentity.userId(),
+          callerName: this.profileName,
+          callerPeerId: this.peer?.id,
+        });
+      }
+    }
+  }
+
+  public callAllPeers(stream: MediaStream) {
+    if (!this.peer || this.isDestroyed) return;
+    for (const [peerId, connObj] of this.connections) {
+      this.callPeer(peerId, stream);
+    }
+    for (const [peerId, mediaConn] of this.pendingIncomingCalls) {
+      try {
+        mediaConn.answer(stream);
+        this.calls.set(peerId, mediaConn);
+      } catch (e) {
+        // ignore
+      }
+    }
+    this.pendingIncomingCalls.clear();
+    this.broadcastCallState(true);
   }
 
   private handlePeerDisconnect(peerId: string) {
@@ -462,6 +613,7 @@ export class MeshTransport {
       call.close();
       this.calls.delete(peerId);
     }
+    this.pendingIncomingCalls.delete(peerId);
   }
 
   public async broadcastTextMessage(conversation: string, text: string) {
@@ -482,19 +634,7 @@ export class MeshTransport {
       { Text: { markdown: text } }
     ) as { id: string; conversation: string; author: string; lamport: number; sent_at_ms: number; body: unknown; sig: number[] };
 
-    const frame = { Msg: signedMsg };
-
-    // Broadcast sealed frame to all active sessions
-    for (const [_, connObj] of this.connections) {
-      if (connObj.session) {
-        try {
-          const sealed = connObj.session.sealFrame(frame);
-          connObj.conn.send({ type: 'Sealed', ciphertext: Array.from(sealed) });
-        } catch (e) {
-          console.warn('Failed to seal message frame for peer:', e);
-        }
-      }
-    }
+    this.sendSealedFrame({ Msg: signedMsg });
 
     const localMsg: MessageRecord = {
       id: msgId,
@@ -542,18 +682,7 @@ export class MeshTransport {
       fileBody
     ) as { id: string; conversation: string; author: string; lamport: number; sent_at_ms: number; body: unknown; sig: number[] };
 
-    const frame = { Msg: signedMsg };
-
-    for (const [_, connObj] of this.connections) {
-      if (connObj.session) {
-        try {
-          const sealed = connObj.session.sealFrame(frame);
-          connObj.conn.send({ type: 'Sealed', ciphertext: Array.from(sealed) });
-        } catch (e) {
-          console.warn('Failed to seal file frame for peer:', e);
-        }
-      }
-    }
+    this.sendSealedFrame({ Msg: signedMsg });
 
     const localMsg: MessageRecord = {
       id: msgId,
@@ -570,17 +699,7 @@ export class MeshTransport {
   }
 
   public sendTyping(isTyping: boolean) {
-    const frame = { Typing: isTyping };
-    for (const [_, connObj] of this.connections) {
-      if (connObj.session) {
-        try {
-          const sealed = connObj.session.sealFrame(frame);
-          connObj.conn.send({ type: 'Sealed', ciphertext: Array.from(sealed) });
-        } catch (e) {
-          // ignore
-        }
-      }
-    }
+    this.sendSealedFrame({ Typing: isTyping });
   }
 
   public callPeer(targetPeerId: string, stream: MediaStream) {
@@ -588,7 +707,7 @@ export class MeshTransport {
     const call = this.peer.call(targetPeerId, stream);
     this.calls.set(targetPeerId, call);
 
-    call.on('stream', (remoteStream) => {
+    call.on('stream', (remoteStream: MediaStream) => {
       this.events.onStream?.(targetPeerId, remoteStream);
     });
 
@@ -603,6 +722,8 @@ export class MeshTransport {
     this.connections.clear();
     this.calls.forEach((c) => c.close());
     this.calls.clear();
+    this.pendingIncomingCalls.clear();
+    this.chunkedIncoming.clear();
     this.anchorConn?.close();
     this.anchorConn = null;
     this.anchorConns.forEach((c) => c.close());
